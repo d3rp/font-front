@@ -1,0 +1,12 @@
+[submodule "deps/freetype"]
+	path = deps/freetype
+	url = https://gitlab.freedesktop.org/freetype/freetype
+[submodule "deps/harfbuzz"]
+	path = deps/harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz.git
+[submodule "deps/glfw"]
+	path = deps/glfw
+	url = https://github.com/glfw/glfw
+[submodule "deps/glm"]
+	path = deps/glm
+	url = https://github.com/g-truc/glm
