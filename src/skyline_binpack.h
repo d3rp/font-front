@@ -1,75 +1,77 @@
-/** @file SkylineBinPack.h
-	@author Jukka Jylänki
+/** @file skyline_binpack.h
+@author Jukka Jylänki
 
-	@brief Implements different bin packer algorithms that use the SKYLINE data structure.
+@brief Implements different bin packer algorithms that use the SKYLINE data structure.
 
-	This work is released to Public Domain, do whatever you want with it.
-*/
+ This work is released to Public Domain, do whatever you want with it.
+         */
 #pragma once
 
 #include <vector>
 
-namespace binpack {
+namespace binpack
+{
 
 struct Rect
 {
-	int x;
-	int y;
-	int width;
-	int height;
+    int x;
+    int y;
+    int width;
+    int height;
 };
 
-/** Implements bin packing algorithms that use the SKYLINE data structure to store the bin contents. */
+/** Implements bin packing algorithms that use the SKYLINE data structure to store the bin contents.
+ */
 class SkylineBinPack
 {
 public:
-	/// Instantiates a bin of size (0,0). Call Init to create a new bin.
-	SkylineBinPack();
+    /// Instantiates a bin of size (0,0). Call init to create a new bin.
+    SkylineBinPack();
 
-	/// Instantiates a bin of the given size.
-	SkylineBinPack(int binWidth, int binHeight);
+    /// Instantiates a bin of the given size.
+    SkylineBinPack(int width, int height);
 
-	/// (Re)initializes the packer to an empty bin of width x height units. Call whenever
-	/// you need to restart with a new bin.
-	void Init(int binWidth, int binHeight);
+    /// (Re)initializes the packer to an empty bin of width x height units. Call whenever
+    /// you need to restart with a new bin.
+    void init(int width, int height);
 
-	/// Inserts a single rectangle into the bin.
-	Rect Insert(int width, int height);
+    /// Inserts a single rectangle into the bin.
+    Rect insert(int width, int height);
 
-	/// Computes the ratio of used surface area to the total bin area.
-	float Occupancy() const;
+    /// Computes the ratio of used surface area to the total bin area.
+    float occupancy() const;
 
 private:
-	int binWidth;
-	int binHeight;
+    int bin_width;
+    int bin_height;
 
-	/// Represents a single level (a horizontal line) of the skyline/horizon/envelope.
-	struct SkylineNode
-	{
-		/// The starting x-coordinate (leftmost).
-		int x;
+    /// Represents a single level (a horizontal line) of the skyline/horizon/envelope.
+    struct SkylineNode
+    {
+        /// The starting x-coordinate (leftmost).
+        int x;
 
-		/// The y-coordinate of the skyline level line.
-		int y;
+        /// The y-coordinate of the skyline level line.
+        int y;
 
-		/// The line width. The ending coordinate (inclusive) will be x+width-1.
-		int width;
-	};
+        /// The line width. The ending coordinate (inclusive) will be x + width - 1.
+        int width;
+    };
 
-	std::vector<SkylineNode> skyLine;
+    std::vector<SkylineNode> skyline;
 
-	unsigned long usedSurfaceArea;
+    unsigned long used_surface_area;
 
-	Rect InsertBottomLeft(int width, int height);
+    Rect insert_bottom_left(int width, int height);
 
-	Rect FindPositionForNewNodeBottomLeft(int width, int height, int &bestHeight, int &bestWidth, int &bestIndex) const;
+    Rect find_position_for_new_node_bottom_left(int width, int height, int& bestHeight, int& bestWidth, int& bestIndex) const;
 
-	bool RectangleFits(int skylineNodeIndex, int width, int height, int &y) const;
+    bool rectangle_fits(int skylineNodeIndex, int width, int height, int& y) const;
 
-	void AddSkylineLevel(int skylineNodeIndex, const Rect &rect);
+    void add_skyline_level(int skylineNodeIndex, const Rect& rect);
 
-	/// Merges all skyline nodes that are at the same level.
-	void MergeSkylines();
+    /// Merges all skyline nodes that are at the same level.
+    void merge_skylines();
 };
 
-}  // End of namespace binpack
+} // namespace binpack

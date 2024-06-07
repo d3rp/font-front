@@ -12,9 +12,9 @@ ShaderProgram::~ShaderProgram()
     glDeleteProgram(program_);
 }
 
-bool ShaderProgram::Init(const char *vertexShaderSource,
-                         const char *fragmentShaderSource,
-                         std::string &errorLog)
+bool ShaderProgram::init(const char *vertex_shader_source,
+                         const char *fragment_shader_source,
+                         std::string &error_log)
 {
     assert(program_ == 0);
 
@@ -24,28 +24,28 @@ bool ShaderProgram::Init(const char *vertexShaderSource,
     // vertex shader
     GLuint vertex = glCreateShader(GL_VERTEX_SHADER);
     on_scope_exit([&vertex]{ glDeleteShader(vertex); });
-    glShaderSource(vertex, 1, &vertexShaderSource, NULL);
+    glShaderSource(vertex, 1, &vertex_shader_source, NULL);
     glCompileShader(vertex);
     glGetShaderiv(vertex, GL_COMPILE_STATUS, &success);
     if (!success)
     {
         glGetShaderInfoLog(vertex, 1024, NULL, info_log);
-        errorLog = "compile vertex shader: ";
-        errorLog += info_log;
+        error_log = "compile vertex shader: ";
+        error_log += info_log;
         return false;
     }
 
     // fragment Shader
     GLuint fragment = glCreateShader(GL_FRAGMENT_SHADER);
     on_scope_exit([&fragment]{ glDeleteShader(fragment); });
-    glShaderSource(fragment, 1, &fragmentShaderSource, NULL);
+    glShaderSource(fragment, 1, &fragment_shader_source, NULL);
     glCompileShader(fragment);
     glGetShaderiv(fragment, GL_COMPILE_STATUS, &success);
     if (!success)
     {
         glGetShaderInfoLog(fragment, 1024, NULL, info_log);
-        errorLog = "compile fragment shader: ";
-        errorLog += info_log;
+        error_log = "compile fragment shader: ";
+        error_log += info_log;
         return false;
     }
 
@@ -59,8 +59,8 @@ bool ShaderProgram::Init(const char *vertexShaderSource,
     if (!success)
     {
         glGetProgramInfoLog(program_, 1024, NULL, info_log);
-        errorLog = "link: ";
-        errorLog += info_log;
+        error_log = "link: ";
+        error_log += info_log;
         return false;
     }
     program_guard.dismiss();
@@ -68,14 +68,14 @@ bool ShaderProgram::Init(const char *vertexShaderSource,
     return true;
 }
 
-void ShaderProgram::Use(bool use)
+void ShaderProgram::use(bool use)
 {
     assert(program_ != 0);
     GLuint prog = use ? program_ : 0;
     glUseProgram(prog);
 }
 
-int ShaderProgram::GetUniformLocation(const char *name)
+int ShaderProgram::get_uniform_location(const char* name)
 {
     assert(program_ != 0);
     return glGetUniformLocation(program_, name);

@@ -116,7 +116,7 @@ struct Atlas
         width  = w;
         height = h;
 
-        bin_packer.Init(w, h);
+        bin_packer.init(w, h);
 
         // TODO: uuwee
         data = (uint8_t*) calloc(w * h * 1, sizeof(uint8_t));
@@ -153,7 +153,7 @@ struct Atlas
         assert(data != nullptr);
         assert(texture != 0);
 
-        bin_packer.Init(width, height);
+        bin_packer.init(width, height);
 
         memset(data, 0, width * height * 1 * sizeof(uint8_t));
 
@@ -174,7 +174,7 @@ struct Atlas
         assert(data != nullptr);
         assert(texture != 0);
 
-        auto rect = bin_packer.Insert(glyph_w, glyph_h);
+        auto rect = bin_packer.insert(glyph_w, glyph_h);
         if (rect.height <= 0)
             return std::nullopt;
 
@@ -206,7 +206,7 @@ struct TextRenderer
         max_quads = def_max_quads;
 
         std::string errorLog;
-        if (!program.Init(shader_string_for_vertices, shader_string_for_fragments, errorLog))
+        if (!program.init(shader_string_for_vertices, shader_string_for_fragments, errorLog))
             return false;
 
         glGenVertexArrays(1, &vao);
@@ -258,10 +258,10 @@ struct TextRenderer
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        program.Use(true);
+        program.use(true);
 
         glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(w), 0.0f, static_cast<float>(h));
-        glUniformMatrix4fv(program.GetUniformLocation("projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(program.get_uniform_location("projection"), 1, GL_FALSE, glm::value_ptr(projection));
         glBindVertexArray(vao);
         glActiveTexture(GL_TEXTURE0);
 
@@ -287,7 +287,7 @@ struct TextRenderer
     {
         commit();
         glBindVertexArray(0);
-        program.Use(false);
+        program.use(false);
     }
 
     void set_colour(Colour c)
@@ -295,7 +295,7 @@ struct TextRenderer
         if (last_colour != c)
             commit();
 
-        glUniform3f(program.GetUniformLocation("textColor"), c.x, c.y, c.z);
+        glUniform3f(program.get_uniform_location("textColor"), c.x, c.y, c.z);
         last_colour = c;
     }
 
@@ -466,7 +466,7 @@ struct TextRenderer
         fprintf(stdout, "texture atlas occupancy: ");
         for (const auto& atlas : atlases)
         {
-            float rate = atlas->bin_packer.Occupancy() * 100.f;
+            float rate = atlas->bin_packer.occupancy() * 100.f;
             fprintf(stdout, " %.1f%%", rate);
         }
         fprintf(stdout, "\n");

@@ -1,186 +1,175 @@
-/** @file SkylineBinPack.cpp
-	@author Jukka Jylänki
-
-	@brief Implements different bin packer algorithms that use the SKYLINE data structure.
-
-	This work is released to Public Domain, do whatever you want with it.
-*/
 #include "skyline_binpack.h"
 #include <algorithm>
 #include <limits>
 #include <cassert>
 
-namespace binpack {
+namespace binpack
+{
 
 SkylineBinPack::SkylineBinPack()
-: binWidth(0), binHeight(0), usedSurfaceArea(0)
+    : bin_width(0)
+    , bin_height(0)
+    , used_surface_area(0)
 {
 }
 
 SkylineBinPack::SkylineBinPack(int width, int height)
-: binWidth(0), binHeight(0), usedSurfaceArea(0)
+    : bin_width(0)
+    , bin_height(0)
+    , used_surface_area(0)
 {
-	Init(width, height);
+    init(width, height);
 }
 
-void SkylineBinPack::Init(int width, int height)
+void SkylineBinPack::init(int width, int height)
 {
-	assert(width > 0);
-	assert(height > 0);
+    assert(width > 0);
+    assert(height > 0);
 
-	binWidth = width;
-	binHeight = height;
+    bin_width  = width;
+    bin_height = height;
 
-	usedSurfaceArea = 0;
-	skyLine.clear();
-	SkylineNode node;
-	node.x = 0;
-	node.y = 0;
-	node.width = binWidth;
-	skyLine.push_back(node);
+    used_surface_area = 0;
+    skyline.clear();
+    SkylineNode node;
+    node.x     = 0;
+    node.y     = 0;
+    node.width = bin_width;
+    skyline.push_back(node);
 }
 
-Rect SkylineBinPack::Insert(int width, int height)
+Rect SkylineBinPack::insert(int width, int height) { return insert_bottom_left(width, height); }
+
+float SkylineBinPack::occupancy() const
 {
-	return InsertBottomLeft(width, height);
+    return (float) used_surface_area / (bin_width * bin_height);
 }
 
-float SkylineBinPack::Occupancy() const
+Rect SkylineBinPack::insert_bottom_left(int width, int height)
 {
-	return (float)usedSurfaceArea / (binWidth * binHeight);
+    int best_height;
+    int best_width;
+    int best_index;
+    Rect new_node = find_position_for_new_node_bottom_left(width, height, best_height, best_width, best_index);
+
+    if (best_index != -1)
+    {
+        add_skyline_level(best_index, new_node);
+        used_surface_area += width * height;
+    }
+
+    return new_node;
 }
 
-Rect SkylineBinPack::InsertBottomLeft(int width, int height)
+Rect SkylineBinPack::find_position_for_new_node_bottom_left(
+    int width,
+    int height,
+    int& best_height,
+    int& best_width,
+    int& best_index
+) const
 {
-	int bestHeight;
-	int bestWidth;
-	int bestIndex;
-	Rect newNode = FindPositionForNewNodeBottomLeft(width, height, bestHeight, bestWidth, bestIndex);
+    Rect new_node;
+    memset(&new_node, 0, sizeof(new_node));
+    best_index  = -1;
+    best_height = std::numeric_limits<int>::max();
+    best_width  = std::numeric_limits<int>::max();
 
-	if (bestIndex != -1)
-	{
-		// Perform the actual packing.
-		AddSkylineLevel(bestIndex, newNode);
+    for (size_t i = 0; i < skyline.size(); ++i)
+    {
+        int y;
+        if (rectangle_fits(i, width, height, y))
+        {
+            if (y + height < best_height || (y + height == best_height && skyline[i].width < best_width))
+            {
+                best_height     = y + height;
+                best_index      = i;
+                best_width      = skyline[i].width;
+                new_node.x      = skyline[i].x;
+                new_node.y      = y;
+                new_node.width  = width;
+                new_node.height = height;
+            }
+        }
+    }
 
-		usedSurfaceArea += width * height;
-	}
-
-	return newNode;
+    return new_node;
 }
 
-Rect SkylineBinPack::FindPositionForNewNodeBottomLeft(int width, int height, int &bestHeight, int &bestWidth, int &bestIndex) const
+bool SkylineBinPack::rectangle_fits(int skyline_node_index, int width, int height, int& y) const
 {
-	Rect newNode;
-	memset(&newNode, 0, sizeof(newNode));
-	bestIndex = -1;
-	bestHeight = std::numeric_limits<int>::max();
-	// Used to break ties if there are nodes at the same level. Then pick the narrowest one.
-	bestWidth = std::numeric_limits<int>::max();
-	for (size_t i = 0; i < skyLine.size(); ++i)
-	{
-		int y;
-		if (RectangleFits(i, width, height, y))
-		{
-			if (y + height < bestHeight || (y + height == bestHeight && skyLine[i].width < bestWidth))
-			{
-				bestHeight = y + height;
-				bestIndex = i;
-				bestWidth = skyLine[i].width;
-				newNode.x = skyLine[i].x;
-				newNode.y = y;
-				newNode.width = width;
-				newNode.height = height;
-			}
-		}
-		//if (RectangleFits(i, height, width, y))
-		//{
-		//	if (y + width < bestHeight || (y + width == bestHeight && skyLine[i].width < bestWidth))
-		//	{
-		//		bestHeight = y + width;
-		//		bestIndex = i;
-		//		bestWidth = skyLine[i].width;
-		//		newNode.x = skyLine[i].x;
-		//		newNode.y = y;
-		//		newNode.width = height;
-		//		newNode.height = width;
-		//	}
-		//}
-	}
+    int x = skyline[skyline_node_index].x;
+    if (x + width > bin_width)
+        return false;
 
-	return newNode;
+    int width_left = width;
+    int i          = skyline_node_index;
+    y              = skyline[skyline_node_index].y;
+
+    while (width_left > 0)
+    {
+        y = std::max(y, skyline[i].y);
+        if (y + height > bin_height)
+            return false;
+        width_left -= skyline[i].width;
+        ++i;
+        assert(i < (int) skyline.size() || width_left <= 0);
+    }
+
+    return true;
 }
 
-bool SkylineBinPack::RectangleFits(int skylineNodeIndex, int width, int height, int &y) const
+void SkylineBinPack::add_skyline_level(int skyline_node_index, const Rect& rect)
 {
-	int x = skyLine[skylineNodeIndex].x;
-	if (x + width > binWidth)
-		return false;
-	int widthLeft = width;
-	int i = skylineNodeIndex;
-	y = skyLine[skylineNodeIndex].y;
-	while (widthLeft > 0)
-	{
-		y = std::max(y, skyLine[i].y);
-		if (y + height > binHeight)
-			return false;
-		widthLeft -= skyLine[i].width;
-		++i;
-		assert(i < (int)skyLine.size() || widthLeft <= 0);
-	}
-	return true;
+    SkylineNode new_node;
+    new_node.x     = rect.x;
+    new_node.y     = rect.y + rect.height;
+    new_node.width = rect.width;
+    skyline.insert(skyline.begin() + skyline_node_index, new_node);
+
+    assert(new_node.x + new_node.width <= bin_width);
+    assert(new_node.y <= bin_height);
+
+    for (size_t i = skyline_node_index + 1; i < skyline.size(); ++i)
+    {
+        assert(skyline[i - 1].x <= skyline[i].x);
+
+        if (skyline[i].x < skyline[i - 1].x + skyline[i - 1].width)
+        {
+            int shrink = skyline[i - 1].x + skyline[i - 1].width - skyline[i].x;
+            skyline[i].x += shrink;
+            skyline[i].width -= shrink;
+
+            if (skyline[i].width <= 0)
+            {
+                skyline.erase(skyline.begin() + i);
+                --i;
+            }
+            else
+            {
+                break;
+            }
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    merge_skylines();
 }
 
-void SkylineBinPack::AddSkylineLevel(int skylineNodeIndex, const Rect &rect)
+void SkylineBinPack::merge_skylines()
 {
-	SkylineNode newNode;
-	newNode.x = rect.x;
-	newNode.y = rect.y + rect.height;
-	newNode.width = rect.width;
-	skyLine.insert(skyLine.begin() + skylineNodeIndex, newNode);
-
-	assert(newNode.x + newNode.width <= binWidth);
-	assert(newNode.y <= binHeight);
-
-	for (size_t i = skylineNodeIndex+1; i < skyLine.size(); ++i)
-	{
-		assert(skyLine[i-1].x <= skyLine[i].x);
-
-		if (skyLine[i].x < skyLine[i-1].x + skyLine[i-1].width)
-		{
-			int shrink = skyLine[i-1].x + skyLine[i-1].width - skyLine[i].x;
-
-			skyLine[i].x += shrink;
-			skyLine[i].width -= shrink;
-
-			if (skyLine[i].width <= 0)
-			{
-				skyLine.erase(skyLine.begin() + i);
-				--i;
-			}
-			else
-			{
-				break;
-			}
-		}
-		else
-		{
-			break;
-		}
-	}
-	MergeSkylines();
+    for (size_t i = 0; i < skyline.size() - 1; ++i)
+    {
+        if (skyline[i].y == skyline[i + 1].y)
+        {
+            skyline[i].width += skyline[i + 1].width;
+            skyline.erase(skyline.begin() + (i + 1));
+            --i;
+        }
+    }
 }
 
-void SkylineBinPack::MergeSkylines()
-{
-	for (size_t i = 0; i < skyLine.size()-1; ++i)
-	{
-		if (skyLine[i].y == skyLine[i+1].y)
-		{
-			skyLine[i].width += skyLine[i+1].width;
-			skyLine.erase(skyLine.begin() + (i+1));
-			--i;
-		}
-	}
-}
-
-}  // End of namespace binpack
+} // End of namespace BinPack

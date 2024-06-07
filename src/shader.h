@@ -9,15 +9,15 @@ public:
     ShaderProgram();
     ~ShaderProgram();
 
-    bool Init(const char *vertexShaderSource,
-              const char *fragmentShaderSource,
-              std::string &errorLog);
+    bool init(const char *vertex_shader_source,
+              const char *fragment_shader_source,
+              std::string &error_log);
 
-    void Use(bool use);
+    void use(bool use);
 
-    int GetUniformLocation(const char *name);
+    int get_uniform_location(const char *name);
 
-    unsigned int ID() const { return program_; }
+    unsigned int id() const { return program_; }
 
 private:
     unsigned int program_;
