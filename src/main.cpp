@@ -9,28 +9,6 @@
 #include "text.h"
 #include "rendering.h"
 
-namespace spec
-{
-constexpr int w = 800;
-constexpr int h = 600;
-} // namespace spec
-
-static void print_versions(typesetting::Resources& resources)
-{
-    auto print_opengl_version = [&]{
-        printf("OpenGL version: %d.%d\n", GLVersion.major, GLVersion.minor);
-    };
-    auto print_freetype_version = [&] {
-        FT_Int major, minor, patch;
-        FT_Library_Version(resources.library, &major, &minor, &patch);
-        printf("FreeType version: %d.%d.%d\n", major, minor, patch);
-    };
-
-    printf("GLFW version: %s\n", glfwGetVersionString());
-    print_freetype_version();
-    print_opengl_version();
-    printf("HarfBuzz version: %s\n", hb_version_string());
-}
 std::function<void(GLFWwindow*)> draw;
 
 int main()
@@ -74,14 +52,14 @@ int main()
     // https://www.glfw.org/docs/3.3/window_guide.html#GLFW_SCALE_TO_MONITOR
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 
-    auto* window = glfwCreateWindow(spec::w, spec::h, "foobar", nullptr, nullptr);
+    auto* window = glfwCreateWindow(spec::gui::w, spec::gui::h, "foobar", nullptr, nullptr);
     check_failed(window, "Create window failed");
 
     glfwSetWindowRefreshCallback(
         window,
         [](auto* window)
         {
-            // draw(window);
+            draw(window);
             glfwSwapBuffers(window);
         }
     );
@@ -101,14 +79,13 @@ int main()
     // ├─Atlas
     // ├─Library
     // └─Handling
-    Resources resources;
+    Library library;
     {
-        bool status = resources.init();
+        bool status = library.init();
         check_failed(status, "Resources init failed"); // 4 fonts and 256 max chars?
     }
-    on_scope_exit([&] { resources.destroy(); });
-
-    print_versions(resources);
+    on_scope_exit([&] { library.destroy(); });
+    utlz::print_versions(library);
 
     TextRenderer rdr;
     {
@@ -117,14 +94,15 @@ int main()
     }
     on_scope_exit([&] { rdr.destroy(); });
 
-    const std::string font_dir  = FONTS_DIR;
+    const std::string font_dir = FONTS_DIR;
 
-    auto add_font = [&resources,content_scale](const std::string font_path){
+    auto add_font = [&library, content_scale](const std::string font_path, int font_size = 56)
+    {
         Font font;
         if (!std::filesystem::exists(font_path))
             throw std::runtime_error("Error: Font file not found");
 
-        auto _ = create_font(&resources, font_path.c_str(), 56, content_scale);
+        auto _ = create_font(&library, font_path.c_str(), font_size, content_scale);
         if (_)
             font = _.value();
         else
@@ -136,18 +114,10 @@ int main()
     auto font_arabic = add_font(font_dir + "/NotoSansArabic-Regular.ttf");
     on_scope_exit([&] { destroy_font(font_arabic); });
 
-
-    Text text_latin { 0, colours::red, {}, u8"abcdefghijklmnopqrstuvxyz" };
-//    Text text_arabic { 0, colours::red, {}, u8"أ" };
-    Text text_arabic { 0, colours::red, {}, u8"أسئلة و أجوبة" };
-    HarfbuzzAdaptor::UnicodeTranslation tr_latin { HB_DIRECTION_LTR,
-                                                   HB_SCRIPT_LATIN,
-                                                   hb_language_from_string("en", -1) };
-    HarfbuzzAdaptor::UnicodeTranslation tr_arabic { HB_DIRECTION_RTL,
-                                                   HB_SCRIPT_ARABIC,
-                                                   hb_language_from_string("ar", -1) };
-    RenderableText<VertexDataFormat> latin(text_latin, font_latin, tr_latin);
-    RenderableText<VertexDataFormat> arabic(text_arabic, font_arabic, tr_arabic);
+    Text text_latin { u8"abcdefghijklmnopqrstuvxyz", "en", HB_SCRIPT_LATIN, HB_DIRECTION_LTR };
+    Text text_arabic { u8"أسئلة و أجوبة" , "ar", HB_SCRIPT_ARABIC, HB_DIRECTION_RTL };
+    RenderableText<VertexDataFormat> latin(text_latin, font_latin);
+    RenderableText<VertexDataFormat> arabic(text_arabic, font_arabic);
 
     draw = [&](GLFWwindow* window)
     {

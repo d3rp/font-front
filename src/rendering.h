@@ -7,8 +7,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "spec.h"
 #include "text.h"
 #include "shader.h"
+#include "skyline_binpack.h"
+#include "utlz.h"
 
 static const char* shader_string_for_vertices = R"SHADER_INPUT(
 #version 330 core
@@ -39,18 +42,6 @@ void main()
 }
 )SHADER_INPUT";
 
-namespace spec
-{
-constexpr int atlas_texture_w = 1024;
-constexpr int atlas_texture_h = 1024;
-
-namespace vertex_data
-{
-constexpr int triangle_points_n = 6;
-constexpr int pos_points_n      = 4;
-} // namespace vertex_data
-} // namespace spec
-
 namespace typesetting
 {
 
@@ -60,42 +51,15 @@ struct VertexDataFormat
     base_t data[spec::vertex_data::triangle_points_n][spec::vertex_data::pos_points_n];
 };
 
-void print_glyph_infos(const hb_glyph_info_t* glyphs, unsigned int length)
-{
-    for (unsigned int i = 0; i < length; ++i)
-    {
-        printf("Glyph %u:\n", i);
-        printf("\tCodepoint: %u\n", glyphs[i].codepoint);
-        printf("\tMask: %u\n", glyphs[i].mask);
-        printf("\tCluster: %u\n", glyphs[i].cluster);
-        printf("\tVar1: %d\n", glyphs[i].var1.i32);
-        printf("\tVar2: %d\n", glyphs[i].var2.i32);
-    }
-}
-
-void print_glyph_positions(const hb_glyph_position_t* positions, unsigned int length)
-{
-    for (unsigned int i = 0; i < length; ++i)
-    {
-        printf("Position %u:\n", i);
-        printf("\tX Advance: %d\n", positions[i].x_advance);
-        printf("\tY Advance: %d\n", positions[i].y_advance);
-        printf("\tX Offset: %d\n", positions[i].x_offset);
-        printf("\tY Offset: %d\n", positions[i].y_offset);
-        printf("\tVar: %d\n", positions[i].var.i32);
-    }
-}
-
 // Wrapper for text to pass for Text Renderer
 template <typename VertexDataType>
-struct RenderableText : HarfbuzzAdaptor
+struct RenderableText
 {
-    explicit RenderableText(const Text& text_ref, const Font& font_ref, const UnicodeTranslation& translation_ref)
+    explicit RenderableText(const Text& text_ref, const Font& font_ref)
         : text(text_ref)
         , font(font_ref)
         , dirty(true)
     {
-        translation = translation_ref;
     }
 
     void update()
@@ -105,145 +69,223 @@ struct RenderableText : HarfbuzzAdaptor
 
         glyph_infos.clear();
         // TODO: can we init-allocate this..
-        Buffer* buffer = hb_buffer_create();
+        auto* buffer = hb_buffer_create();
         on_scope_exit([&buffer] { hb_buffer_destroy(buffer); });
 
-        hb_buffer_add_utf8(buffer, text.text.c_str(), -1, 0, -1);
-
-        // If you don't know the direction, script, and language
-        //        hb_buffer_guess_segment_properties(buffer);
-
-        hb_buffer_set_direction(buffer, translation.direction);
-        hb_buffer_set_script(buffer, translation.script);
-        hb_buffer_set_language(buffer, translation.language);
-
-        // beef
-        hb_shape(font.unicode, buffer, nullptr, 0);
-
-        unsigned int glyph_n;
-        auto* glyph_info = hb_buffer_get_glyph_infos(buffer, &glyph_n);
-        auto* glyph_pos  = hb_buffer_get_glyph_positions(buffer, &glyph_n);
-
-        print_glyph_infos(glyph_info, glyph_n);
-        print_glyph_positions(glyph_pos, glyph_n);
-
-        for (uint i = 0; i < glyph_n; ++i)
-            glyph_infos.emplace_back(std::forward<GlyphInfo>(GlyphInfo {
-                glyph_info[i].codepoint,
-                glyph_pos[i].x_offset / 64,
-                glyph_pos[i].y_offset / 64,
-                glyph_pos[i].x_advance / 8,
-                glyph_pos[i].y_advance / 64 }));
+        auto [hb_infos, hb_poss, n] { shaper.shape(text, font) };
+        for (uint i = 0; i < n; ++i)
+            glyph_infos.emplace_back(std::forward<Shaper::GlyphInfo>(
+                { hb_infos[i].codepoint,
+                  hb_poss[i].x_offset / 64,
+                  hb_poss[i].y_offset / 64,
+                  hb_poss[i].x_advance / 64,
+                  hb_poss[i].y_advance / 64 }
+            ));
 
         dirty = false;
     }
 
+    Shaper shaper;
+    std::vector<Shaper::GlyphInfo> glyph_infos;
     const Text& text;
     const Font& font;
 
-    std::vector<GlyphInfo> glyph_infos;
     mutable bool dirty = true;
-    mutable std::vector<VertexDataType> vertices {};
+};
+
+using GlyphKey = std::pair<unsigned int, unsigned int>;
+
+struct Glyph
+{
+    glm::ivec2 size { 0, 0 };       // Size of glyph
+    glm::ivec2 bearing { 0, 0 };    // Offset from horizontal layout origin to left/top of glyph
+    glm::ivec2 tex_offset { 0, 0 }; // Offset of glyph in texture atlas
+    int tex_index        = -1;      // Texture atlas index
+    unsigned int dyn_tex = 0;       // Texture atlas generation
+};
+
+using GlyphCache = std::unordered_map<GlyphKey, Glyph>;
+
+struct Atlas
+{
+    bool init(uint16_t w, uint16_t h)
+    {
+        assert(w > 0);
+        assert(h > 0);
+
+        width  = w;
+        height = h;
+
+        bin_packer.Init(w, h);
+
+        // TODO: uuwee
+        data = (uint8_t*) calloc(w * h * 1, sizeof(uint8_t));
+        if (!data)
+            return false;
+
+        // generate texture
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, w, h, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
+
+        // set texture options
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        return true;
+    }
+
+    bool destroy()
+    {
+        free(data);
+        glDeleteTextures(1, &texture);
+        return true;
+    }
+
+    void clear()
+    {
+        assert(width > 0);
+        assert(height > 0);
+        assert(data != nullptr);
+        assert(texture != 0);
+
+        bin_packer.Init(width, height);
+
+        memset(data, 0, width * height * 1 * sizeof(uint8_t));
+
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RED, GL_UNSIGNED_BYTE, data);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    };
+
+    std::optional<Point> add_region(const Glyph& glyph, const uint8_t* glyph_data)
+    {
+        auto glyph_w = glyph.size.x, glyph_h = glyph.size.y;
+        assert(glyph_w > 0);
+        assert(glyph_h > 0);
+        assert(glyph_data != nullptr);
+
+        assert(width > 0);
+        assert(height > 0);
+        assert(data != nullptr);
+        assert(texture != 0);
+
+        auto rect = bin_packer.Insert(glyph_w, glyph_h);
+        if (rect.height <= 0)
+            return std::nullopt;
+
+        for (uint16_t i = 0; i < glyph_h; ++i)
+            memcpy(data + ((rect.y + i) * width + rect.x), glyph_data + i * glyph_w, glyph_w);
+
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, rect.x, rect.y, glyph_w, glyph_h, GL_RED, GL_UNSIGNED_BYTE, glyph_data);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        return { { rect.x, rect.y } };
+    }
+
+    uint16_t width {};
+    uint16_t height {};
+    binpack::SkylineBinPack bin_packer;
+    uint8_t* data {};
+    unsigned int texture {};
 };
 
 // Passes shit to the shader
 struct TextRenderer
-    : blueprints::InitDestroy<TextRenderer>
-    , blueprints::Commitable<TextRenderer>
 {
-    struct
+    bool init(int textures_n, int def_max_quads)
     {
-        bool init(int textures_n, int def_max_quads)
+        assert(textures_n > 0 && textures_n <= 16);
+        assert(def_max_quads > 0 && def_max_quads <= 1024);
+
+        max_quads = def_max_quads;
+
+        std::string errorLog;
+        if (!program.Init(shader_string_for_vertices, shader_string_for_fragments, errorLog))
+            return false;
+
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, max_quads * sizeof(VertexDataFormat), nullptr, GL_DYNAMIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(
+            0,
+            spec::vertex_data::pos_points_n,
+            GL_FLOAT,
+            GL_FALSE,
+            spec::vertex_data::pos_points_n * sizeof(VertexDataFormat::base_t),
+            0
+        );
+        glBindVertexArray(0);
+        for (int i = 0; i < textures_n; i++)
         {
-            assert(textures_n > 0 && textures_n <= 16);
-            assert(def_max_quads > 0 && def_max_quads <= 1024);
-
-            p.max_quads = def_max_quads;
-
-            std::string errorLog;
-            if (!p.program.Init(shader_string_for_vertices, shader_string_for_fragments, errorLog))
+            std::unique_ptr<Atlas> t = std::make_unique<Atlas>();
+            if (!t->init(spec::atlas_texture_w, spec::atlas_texture_h))
                 return false;
 
-            glGenVertexArrays(1, &p.vao);
-            glGenBuffers(1, &p.vbo);
-            glBindVertexArray(p.vao);
-            glBindBuffer(GL_ARRAY_BUFFER, p.vbo);
-            glBufferData(GL_ARRAY_BUFFER, p.max_quads * sizeof(VertexDataFormat), nullptr, GL_DYNAMIC_DRAW);
-            glEnableVertexAttribArray(0);
-            glVertexAttribPointer(
-                0,
-                spec::vertex_data::pos_points_n,
-                GL_FLOAT,
-                GL_FALSE,
-                spec::vertex_data::pos_points_n * sizeof(VertexDataFormat::base_t),
-                0
-            );
-            glBindVertexArray(0);
-            for (int i = 0; i < textures_n; i++)
-            {
-                std::unique_ptr<Atlas> t = std::make_unique<Atlas>();
-                if (!t->init(spec::atlas_texture_w, spec::atlas_texture_h))
-                    return false;
-
-                p.atlases.emplace_back(std::move(t));
-                p.dyn_atlases.push_back(0);
-            }
-
-            p.line.tex_index = -1;
-
-            p.vertices = (float*) malloc(p.max_quads * sizeof(VertexDataFormat));
-            if (!p.vertices)
-                return false;
-
-            return true;
+            atlases.emplace_back(std::move(t));
+            dyn_atlases.push_back(0);
         }
 
-        bool destroy()
-        {
-            glDeleteBuffers(1, &p.vbo);
-            glDeleteVertexArrays(1, &p.vao);
-            free(p.vertices);
+        line.tex_index = -1;
 
-            return true;
-        }
+        vertices = (float*) malloc(max_quads * sizeof(VertexDataFormat));
+        if (!vertices)
+            return false;
 
-        bool begin(int w, int h)
-        {
-            glEnable(GL_CULL_FACE);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        return true;
+    }
 
-            p.program.Use(true);
+    bool destroy()
+    {
+        glDeleteBuffers(1, &vbo);
+        glDeleteVertexArrays(1, &vao);
+        free(vertices);
 
-            glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(w), 0.0f, static_cast<float>(h));
-            glUniformMatrix4fv(p.program.GetUniformLocation("projection"), 1, GL_FALSE, glm::value_ptr(projection));
-            glBindVertexArray(p.vao);
-            glActiveTexture(GL_TEXTURE0);
+        return true;
+    }
 
-            return true;
-        }
+    bool begin(int w, int h)
+    {
+        glEnable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        bool commit()
-        {
-            if (!p.cur_quad)
-                return false;
+        program.Use(true);
 
-            // update content of VBO memory
-            glBufferSubData(GL_ARRAY_BUFFER, 0, p.cur_quad * sizeof(VertexDataFormat), p.vertices);
-            // render quad
-            glDrawArrays(GL_TRIANGLES, 0, p.cur_quad * spec::vertex_data::triangle_points_n);
+        glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(w), 0.0f, static_cast<float>(h));
+        glUniformMatrix4fv(program.GetUniformLocation("projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glBindVertexArray(vao);
+        glActiveTexture(GL_TEXTURE0);
 
-            p.cur_quad = 0;
+        return true;
+    }
 
-            return true;
-        }
+    bool commit()
+    {
+        if (!cur_quad)
+            return false;
 
-        TextRenderer& p;
-    } impl { *this };
+        // update content of VBO memory
+        glBufferSubData(GL_ARRAY_BUFFER, 0, cur_quad * sizeof(VertexDataFormat), vertices);
+        // render quad
+        glDrawArrays(GL_TRIANGLES, 0, cur_quad * spec::vertex_data::triangle_points_n);
+
+        cur_quad = 0;
+
+        return true;
+    }
 
     void end()
     {
-        impl.commit();
+        commit();
         glBindVertexArray(0);
         program.Use(false);
     }
@@ -257,20 +299,27 @@ struct TextRenderer
         last_colour = c;
     }
 
-    // adds and update glyph (returns revised version)
-    Glyph add_to_atlas(Glyph& glyph, const uint8_t* data)
+    void set_tex_id(unsigned int tex_id)
     {
-        auto [width, height, tex_x, tex_y]
-            = std::tuple { glyph.size.x, glyph.size.y, glyph.tex_index, glyph.dyn_tex };
+        if (tex_id != last_tex_id)
+            commit();
 
+        glBindTexture(GL_TEXTURE_2D, tex_id);
+        last_tex_id = tex_id;
+    }
+
+    // adds and update glyph (returns revised version)
+    Glyph add_to_atlas(Glyph glyph, const uint8_t* data)
+    {
         for (size_t i = 0; i < atlases.size(); ++i)
         {
             auto* atlas = atlases[i].get();
-            if (atlas->add_region(glyph, data))
+            if (auto tex_offset_opt = atlas->add_region(glyph, data))
             {
-                Glyph new_glyph     = glyph;
-                new_glyph.tex_index = i;
-                new_glyph.dyn_tex   = dyn_atlases[i];
+                Glyph new_glyph      = glyph;
+                new_glyph.tex_index  = i;
+                new_glyph.dyn_tex    = dyn_atlases[i];
+                new_glyph.tex_offset = tex_offset_opt.value();
                 return new_glyph;
             }
         }
@@ -283,11 +332,12 @@ struct TextRenderer
         textures_evicted++;
 
         // retry
-        if (atlas->add_region(glyph, data))
+        if (auto tex_offset_opt = atlas->add_region(glyph, data))
         {
-            Glyph new_glyph     = glyph;
-            new_glyph.tex_index = index;
-            new_glyph.dyn_tex   = dyn_atlases[index];
+            Glyph new_glyph      = glyph;
+            new_glyph.tex_index  = index;
+            new_glyph.dyn_tex    = dyn_atlases[index];
+            new_glyph.tex_offset = tex_offset_opt.value();
             return new_glyph;
         }
 
@@ -312,39 +362,28 @@ struct TextRenderer
 
         // glyph needs to be created
         auto face = font.face;
-        if (FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT)
-            || FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL))
+        if (FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT))
             throw std::runtime_error("Glyph load failed at: " + std::to_string(glyph_index));
 
-        int tex_index         = -1;
-        unsigned int dyn_tex  = 0;
-        uint16_t tex_offset_x = 0, tex_offset_y = 0;
+        // TODO: use SDF
+        if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL))
+            throw std::runtime_error("Glyph load failed at: " + std::to_string(glyph_index));
+
         auto* g = face->glyph;
         // Create placeholder
-        auto glyph = Glyph { glm::ivec2 { g->bitmap.width, g->bitmap.rows },
-                             glm::ivec2 { g->bitmap_left, g->bitmap_top },
-                             glm::ivec2 { tex_offset_x, tex_offset_y },
-                             tex_index,
-                             dyn_tex };
+        Glyph glyph;
         // update atlas and update its info to the glyph
         if (g->bitmap.width > 0 && g->bitmap.rows > 0)
         {
-            glyph = add_to_atlas(glyph, g->bitmap.buffer);
+            glyph.size    = { g->bitmap.width, g->bitmap.rows };
+            glyph.bearing = { g->bitmap_left, g->bitmap_top };
+            glyph         = add_to_atlas(glyph, g->bitmap.buffer);
             textures_required++;
         }
 
         glyphs[key] = glyph;
 
         return { glyphs.at(key) };
-    }
-
-    void set_tex_id(unsigned int tex_id)
-    {
-        if (tex_id != last_tex_id)
-            commit();
-
-        glBindTexture(GL_TEXTURE_2D, tex_id);
-        last_tex_id = tex_id;
     }
 
     void append_quad(VertexDataFormat v)
@@ -362,7 +401,7 @@ struct TextRenderer
     }
 
     template <typename VertexDataType>
-    void draw_text(RenderableText<VertexDataType>& renderable, const Point p, const Colour colour)
+    void draw_text(RenderableText<VertexDataType>& renderable, Point o, const Colour colour)
     {
         set_colour(colour);
         renderable.update();
@@ -385,8 +424,8 @@ struct TextRenderer
                 auto* atlas = atlases[g.tex_index].get();
                 set_tex_id(atlas->texture);
 
-                float glyph_x = p.x + g.bearing.x + info.x_offset;
-                float glyph_y = p.y - (g.size.y - g.bearing.y) + info.y_offset;
+                float glyph_x = o.x + g.bearing.x + info.x_offset;
+                float glyph_y = o.y - (g.size.y - g.bearing.y) + info.y_offset;
                 auto glyph_w  = (float) g.size.x;
                 auto glyph_h  = (float) g.size.y;
 
@@ -404,6 +443,9 @@ struct TextRenderer
                                 { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
                                 { glyph_x + glyph_w, glyph_y + glyph_h, tex_x + tex_w, tex_y } } });
             }
+
+            o.x += info.x_advance;
+            o.y += info.y_advance;
         }
     }
 
@@ -440,8 +482,7 @@ struct TextRenderer
     GLuint vao, vbo;
     Colour last_colour;
 
-
-    using Atlases        = std::vector<std::unique_ptr<Atlas>>;
+    using Atlases = std::vector<std::unique_ptr<Atlas>>;
     Atlases atlases;
     using DynamicAtlases = std::vector<unsigned int>;
     DynamicAtlases dyn_atlases;
@@ -459,15 +500,5 @@ struct TextRenderer
     GLsizeiptr max_quads;
     GLsizeiptr cur_quad;
 };
-
-// I'd prefer to organise this way, but it's a lot of hassle for a simple demo
-//      template <typename T>
-//      struct Renderer { ... };
-//
-//      template <>
-//      struct Renderer<Text>
-//      {
-//
-//      };
 
 } // namespace typesetting
