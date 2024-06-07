@@ -19,7 +19,6 @@
 namespace typesetting
 {
 
-
 struct Font
 {
     using Id = unsigned int;
@@ -35,7 +34,6 @@ struct Font
     float font_size;
     float content_scale;
 };
-
 
 unsigned int gen_id()
 {
@@ -81,10 +79,10 @@ create_font(Library* resources, const char* font_file, const int font_size, cons
 
     FT_Set_Char_Size(
         font.face,
-        0,                                      // same as character height
+        0,                                            // same as character height
         utlz::to_ft_float(font_size * content_scale), // char_height in 1/64th of points
-        logic_dpi_x,                            // horizontal device resolution
-        logic_dpi_y                             // vertical device resolution
+        logic_dpi_x,                                  // horizontal device resolution
+        logic_dpi_y                                   // vertical device resolution
     );
 
     //    FT_Set_Char_Size(face, 0, 1000, 0, 0);
@@ -131,19 +129,27 @@ struct Text
     hb_direction_t direction;
 };
 
+namespace HBFeature {
+const hb_tag_t KernTag = HB_TAG('k', 'e', 'r', 'n'); // kerning operations
+const hb_tag_t LigaTag = HB_TAG('l', 'i', 'g', 'a'); // standard ligature substitution
+const hb_tag_t CligTag = HB_TAG('c', 'l', 'i', 'g'); // contextual ligature substitution
+
+static hb_feature_t LigatureOff = { LigaTag, 0, 0, std::numeric_limits<unsigned int>::max() };
+static hb_feature_t LigatureOn  = { LigaTag, 1, 0, std::numeric_limits<unsigned int>::max() };
+static hb_feature_t KerningOff  = { KernTag, 0, 0, std::numeric_limits<unsigned int>::max() };
+static hb_feature_t KerningOn   = { KernTag, 1, 0, std::numeric_limits<unsigned int>::max() };
+static hb_feature_t CligOff     = { CligTag, 0, 0, std::numeric_limits<unsigned int>::max() };
+static hb_feature_t CligOn      = { CligTag, 1, 0, std::numeric_limits<unsigned int>::max() };
+}
+
 struct Shaper
 {
+
     using Buffer = hb_buffer_t*;
 
-    Shaper()
-    {
-        buffer = hb_buffer_create();
-    }
+    Shaper() {}
 
-    ~Shaper()
-    {
-        hb_buffer_destroy(buffer);
-    }
+    ~Shaper() { hb_buffer_destroy(buffer); }
 
     struct GlyphInfo
     {
@@ -156,12 +162,20 @@ struct Shaper
 
     auto shape(const Text& text, const Font& font)
     {
-        // If you don't know the direction, script, and language
-        //        hb_buffer_guess_segment_properties(buffer);
+        if (buffer)
+            hb_buffer_destroy(buffer);
 
-        hb_buffer_set_direction(buffer, text.direction);
-        hb_buffer_set_script(buffer, text.script);
-        hb_buffer_set_language(buffer, hb_language_from_string(text.language.c_str(), -1));
+        buffer = hb_buffer_create();
+
+        // If you don't know the direction, script, and language
+        if (text.language.empty())
+            hb_buffer_guess_segment_properties(buffer);
+        else
+        {
+            hb_buffer_set_direction(buffer, text.direction);
+            hb_buffer_set_script(buffer, text.script);
+            hb_buffer_set_language(buffer, hb_language_from_string(text.language.c_str(), -1));
+        }
 
         hb_buffer_add_utf8(buffer, text.text.c_str(), -1, 0, -1);
 
@@ -178,8 +192,13 @@ struct Shaper
         return std::tuple { glyph_info, glyph_pos, glyph_n };
     }
 
-    Buffer buffer;
-};
+    void add_feature(hb_feature_t feature)
+    {
+        features.emplace_back(feature);
+    }
 
+    std::vector<hb_feature_t> features;
+    Buffer buffer = nullptr;
+};
 
 } // namespace typesetting

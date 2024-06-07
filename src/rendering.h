@@ -37,7 +37,13 @@ uniform vec3 textColor;
 
 void main()
 {
-    vec4 sampled = vec4(1.0, 1.0, 1.0, texture(text, TexCoords).r);
+    float y = texture(text, TexCoords).r;
+    if (y < 0.5)
+        discard;
+    y *= 1.45;
+    y = 1.0 / (1.0 + exp(-20.0 * (y - 0.76)));
+
+    vec4 sampled = vec4(1.0, 1.0, 1.0, y);
     color = vec4(textColor, 1.0) * sampled;
 }
 )SHADER_INPUT";
@@ -272,11 +278,12 @@ struct TextRenderer
     {
         if (!cur_quad)
             return false;
-
+        glDepthMask(GL_FALSE); // Don't write into the depth buffer
         // update content of VBO memory
         glBufferSubData(GL_ARRAY_BUFFER, 0, cur_quad * sizeof(VertexDataFormat), vertices);
         // render quad
         glDrawArrays(GL_TRIANGLES, 0, cur_quad * spec::vertex_data::triangle_points_n);
+        glDepthMask(GL_TRUE); // Don't write into the depth buffer
 
         cur_quad = 0;
 
@@ -360,13 +367,15 @@ struct TextRenderer
             return { glyph };
         }
 
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // Disable byte-alignment restriction
+
         // glyph needs to be created
         auto face = font.face;
         if (FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT))
             throw std::runtime_error("Glyph load failed at: " + std::to_string(glyph_index));
 
         // TODO: use SDF
-        if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL))
+        if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_SDF))
             throw std::runtime_error("Glyph load failed at: " + std::to_string(glyph_index));
 
         auto* g = face->glyph;
