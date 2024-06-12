@@ -32,9 +32,15 @@ target_include_directories(glad PUBLIC "deps/glad/include")
 # GLM
 find_package(glm REQUIRED)
 
+# utf8cpp
+add_library(utf8cpp INTERFACE deps/utf8cpp/utf8string.hpp)
+target_include_directories(utf8cpp INTERFACE "deps/utf8cpp")
+
 target_link_libraries(${PROJECT_NAME}
         glfw
         glm::glm
         glad
         freetype
-        harfbuzz)
+        harfbuzz
+        utf8cpp
+)

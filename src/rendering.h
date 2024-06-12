@@ -61,10 +61,11 @@ struct VertexDataFormat
 template <typename VertexDataType>
 struct RenderableText
 {
-    explicit RenderableText(const Text& text_ref, const Font& font_ref)
+    explicit RenderableText(const Text& text_ref, const Font& font_ref, const Colour c = colours::red)
         : text(text_ref)
         , font(font_ref)
         , dirty(true)
+        , colour(c)
     {
     }
 
@@ -75,12 +76,12 @@ struct RenderableText
 
         glyph_infos.clear();
         // TODO: can we init-allocate this..
-        auto* buffer = hb_buffer_create();
-        on_scope_exit([&buffer] { hb_buffer_destroy(buffer); });
+        //        auto* buffer = hb_buffer_create();
+        //        on_scope_exit([&buffer] { hb_buffer_destroy(buffer); });
 
         auto [hb_infos, hb_poss, n] { shaper.shape(text, font) };
         for (uint i = 0; i < n; ++i)
-            glyph_infos.emplace_back(std::forward<Shaper::GlyphInfo>(
+            glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
                 { hb_infos[i].codepoint,
                   hb_poss[i].x_offset / 64,
                   hb_poss[i].y_offset / 64,
@@ -91,10 +92,11 @@ struct RenderableText
         dirty = false;
     }
 
-    Shaper shaper;
-    std::vector<Shaper::GlyphInfo> glyph_infos;
+    hb_helpers::Shaper shaper;
+    std::vector<hb_helpers::GlyphInfo> glyph_infos;
     const Text& text;
     const Font& font;
+    Colour colour;
 
     mutable bool dirty = true;
 };
@@ -376,7 +378,7 @@ struct TextRenderer
 
         // TODO: use SDF
         if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_SDF))
-            throw std::runtime_error("Glyph load failed at: " + std::to_string(glyph_index));
+            throw std::runtime_error("Glyph render failed at: " + std::to_string(glyph_index));
 
         auto* g = face->glyph;
         // Create placeholder
@@ -407,6 +409,174 @@ struct TextRenderer
             sizeof(VertexDataFormat)
         );
         cur_quad++;
+    }
+
+    std::vector<ShaperChunk> collect_chunks(
+        std::vector<char32_t>& uchrs,
+        std::vector<hb_helpers::FontShaper>& shapers,
+        int shaper_depth,
+        int chunk_start           = 0,
+        int chunk_end             = -1,
+        int fallback_shader_index = 0
+    )
+    {
+        static std::vector<ShaperChunk> chunks;
+        if (shaper_depth == 0)
+        {
+            chunks.clear();
+            chunks.reserve(uchrs.size() / 2); // Newton ayeah = good enough approximation
+        }
+
+        auto create_chunk = [&](auto start, auto end, auto depth)
+        {
+            ShaperChunk chunk;
+            chunk.text_ptr     = &uchrs;
+            chunk.range.start  = start;
+            chunk.range.end    = end;
+            chunk.range.length = end - start;
+            chunk.shaper       = &shapers[depth];
+            return chunk;
+        };
+
+        // Use fallback font when all font options have been tried
+        if (shaper_depth == shapers.size())
+        {
+            //            if (auto chunk_opt = create_chunk(uchrs.size(), fallback_shader_index))
+            //                chunks.emplace_back(std::forward<ShaperChunk>(chunk_opt.value()));
+
+            return chunks;
+        }
+
+        bool should_collect = false;
+        int new_start       = chunk_start;
+        int new_end         = chunk_start;
+        while (new_end < (chunk_end < 0 ? uchrs.size() : chunk_end))
+        {
+            if (is_char_supported(shapers[shaper_depth].font, uchrs[new_end]))
+            {
+                // Continue as long as this font applies to the characters
+                ++new_end;
+                should_collect = true;
+            }
+            else
+            {
+                // Save last iterated chunk with appropriate font
+                if (should_collect)
+                {
+                    should_collect = false;
+                    chunks.emplace_back(
+                        std::forward<ShaperChunk>(create_chunk(new_start, new_end, shaper_depth))
+                    );
+                }
+
+                // Look up how long the mismatching character set continues
+                new_start = new_end;
+                while (new_end < uchrs.size()
+                       && (!is_char_supported(shapers[shaper_depth].font, uchrs[new_end])))
+                {
+                    ++new_end;
+                    // skip over one character, if that also isn't supported by this shaper
+                    // This matters apparently when spaces are introduced in specific shaping specs, e.g. arabic:
+                    // "أسئلة و أجوبة
+                    // And trying to render the spaces as latin chars in between will crash freetype load glyph
+                    if (new_end + 1 < uchrs.size() && !is_char_supported(shapers[shaper_depth].font, uchrs[new_end + 1]))
+                        ++new_end;
+                }
+
+                // Recurssively try other shaders
+                collect_chunks(uchrs, shapers, shaper_depth + 1, new_start, new_end);
+                new_start = new_end;
+            }
+            //            std::cout << "iteration end at depth: " << shaper_depth << " new_start: "
+            //            << new_start
+            //                      << " new_end: " << new_end << "\n";
+        }
+        // Save last iterated chunk with appropriate font
+        if (should_collect)
+            chunks.emplace_back(std::forward<ShaperChunk>(create_chunk(new_start, new_end, shaper_depth)));
+
+        return chunks;
+    }
+
+    template <typename VertexDataType>
+    void draw_text_yes(std::string& text, std::vector<hb_helpers::FontShaper>& shapers, Point o)
+    {
+        static std::vector<hb_helpers::GlyphInfo> glyph_infos;
+        glyph_infos.clear();
+
+        int i = 0;
+        utf::string u_str(text.c_str());
+        auto u_chrs = u_str.as_unicode();
+
+        auto chunks = collect_chunks(u_chrs, shapers, 0);
+
+        for (auto& chunk : chunks)
+        {
+            std::cout << to_string(chunk);
+
+            auto [hb_infos, hb_poss, n] { chunk.shaper->shape(
+                reinterpret_cast<const uint32_t*>(u_chrs.data()),
+                u_chrs.size(),
+                chunk.range.start,
+                chunk.range.length
+            ) };
+            for (uint i = 0; i < n; ++i)
+                glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
+                    { hb_infos[i].codepoint,
+                      hb_poss[i].x_offset / 64,
+                      hb_poss[i].y_offset / 64,
+                      hb_poss[i].x_advance / 64,
+                      hb_poss[i].y_advance / 64 }
+                ));
+
+            for (auto& info : glyph_infos)
+            {
+                auto g_opt = get_glyph(chunk.shaper->font, info.codepoint);
+                Glyph g    = std::invoke(
+                    [&]
+                    {
+                        if (!g_opt)
+                            throw std::runtime_error("get glyph error");
+                        else
+                            return g_opt.value();
+                    }
+                );
+                auto g_w = g.size.x, g_h = g.size.y;
+                if (g_w > 0 && g_h > 0)
+                {
+                    auto* atlas = atlases[g.tex_index].get();
+                    set_tex_id(atlas->texture);
+
+                    float glyph_x = o.x + g.bearing.x + info.x_offset;
+                    float glyph_y = o.y - (g.size.y - g.bearing.y) + info.y_offset;
+                    auto glyph_w  = (float) g.size.x;
+                    auto glyph_h  = (float) g.size.y;
+
+                    float tex_x = g.tex_offset.x / (float) atlas->width;
+                    float tex_y = g.tex_offset.y / (float) atlas->height;
+                    float tex_w = glyph_w / (float) atlas->width;
+                    float tex_h = glyph_h / (float) atlas->height;
+
+                    // update VBO for each glyph
+                    append_quad({ { { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
+                                    { glyph_x, glyph_y, tex_x, tex_y + tex_h },
+                                    { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
+
+                                    { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
+                                    { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
+                                    { glyph_x + glyph_w, glyph_y + glyph_h, tex_x + tex_w, tex_y } } });
+                }
+
+                o.x += info.x_advance;
+                o.y += info.y_advance;
+            }
+        }
+    }
+
+    template <typename VertexDataType>
+    void draw_text(RenderableText<VertexDataType>& renderable, Point o)
+    {
+        draw_text(renderable, o, renderable.colour);
     }
 
     template <typename VertexDataType>
