@@ -134,6 +134,13 @@ int main()
     auto font_emoji = add_font(font_dir + "/NotoEmoji-VariableFont_wght.ttf");
     on_scope_exit([&] { destroy_font(font_emoji); });
 
+    auto font_simple_chinese = add_font(font_dir + "/NotoSansSC-VariableFont_wght.ttf");
+    on_scope_exit([&] { destroy_font(font_simple_chinese); });
+    auto font_katakana = add_font(font_dir + "/NotoSansJP-VariableFont_wght.ttf");
+    on_scope_exit([&] { destroy_font(font_katakana); });
+    auto font_korean = add_font(font_dir + "/NotoSansKR-VariableFont_wght.ttf");
+    on_scope_exit([&] { destroy_font(font_korean); });
+
     auto maths_cstr = u8"⩤⪉⦫∷𝞿∰⩪⩭𝔠";
     Text text_maths { maths_cstr, "dflt", HB_SCRIPT_LATIN, HB_DIRECTION_LTR };
     //    Text breaking_long {
@@ -185,8 +192,14 @@ int main()
     };
 
     //    auto mixed_cstr        = u8"Rénè ∰⩪⩭𝔠 ௹☞➾ 🌮👩";
-    auto mixed_cstr = u8"huu त रू (𝔠 ௹➾ و) أجوبة x👩‍👩‍👧‍👦{é}";
-    //    auto mixed_cstr        = u8"妙העולם ";
+    //        auto mixed_cstr = u8"huu त रू (𝔠 ௹➾ و) أجوبة
+    //        x👩‍👩‍👧‍👦{é}";
+    auto mixed_cstr = u8"huu (त रू 𝔠 ௹➾ أجو)بة x👩‍👩‍👧‍👦{é}";
+    auto ultimate_cstr = u8"@L字Яかカทب가अΩאகಕდകకԱကકকਕລ̈កཀඅአތକ﷐ᓀܐㄅߘᏄꊈࠀϢᠦⰀꕉᬅⵞꚠᯀꨀꦄꤊᰀᤀꓨࡀꯀᦀᱚꢂᮃꠀᥐᨠꪀ𐬀𑀅ᨀ"
+                        u8"ᝃ𐊷𒀀𐠀𐐔𓅓𐌰ᜣ𐡀𐭠𐭀𑂃𐨀𐀀𐊀𐤠ᚏ𐌈𐎠𐩠𐰀𐒀ꡀ𐤀ꤰᚠ𐑐ᜃᝣ𐎀𑄃𐦠𐦀𖼀𑆃𑃐𑚀⠎𐔷𖫦𛰠𐔀𑌕𖬜𑈈𐙇𑅒𐫁𞠂𑘎𖩏𐪕𐢖𐡳𑫀𐍫𐮏𑖎𑊾𑒄𑢴𑜗𔐀𐣴𑊏𐲡𝡐𞤉𑰎𑱲𐒵"
+                        u8"𘈩𑐒𑴐𛇄𑩜𑨋𑠋𑵱𐴒𑻥𖹀𐼙𐽂𐿱𞄈𑧎𞋡𐾿𑤌𘱥𐺈𒿥𐽼𖪼𞊐𐖂𑼛𞓦𐵝𖄜𖵅𞗐𑯄𐗂𑎒𖶓𐥐𞛕"
+                        u8"𑷆";
+    //    auto mixed_cstr = u8"Diipaوdaa";
     //    auto mixed_cstr        = u8"Rénè ∰⩪⩭𝔠";
     Text text_sth_else_raw = { sth_cstr };
     Text text_mixed_raw    = { mixed_cstr };
@@ -195,14 +208,21 @@ int main()
     b.list_for_words(mixed_cstr);
     std::cout << "words: " << b.word_count(mixed_cstr) << "\n";
 
-    std::string mixed = mixed_cstr;
+    std::string mixed    = mixed_cstr;
+    std::string ultimate = ultimate_cstr;
 
-//    hb_helpers::print_direction_markers(mixed);
-//    hb_helpers::test_sheenbidi(mixed);
+    //    hb_helpers::print_direction_markers(mixed);
+    //    hb_helpers::test_sheenbidi(mixed);
     Font::Map fonts;
-    fonts.add(HB_SCRIPT_COMMON, font_latin);
+    fonts.add(HB_SCRIPT_LATIN, font_latin);
     fonts.add(HB_SCRIPT_ARABIC, font_amiri);
-    fonts.set_fallback(font_latin);
+    fonts.add(HB_SCRIPT_HEBREW, font_sanskrit);
+    fonts.add(HB_SCRIPT_KATAKANA, font_katakana);
+//    fonts.add(HB_SCRIPT_HANGUL, font_korean);
+    fonts.add(HB_SCRIPT_DEVANAGARI, font_arial);
+    fonts.add(HB_SCRIPT_HAN, font_han);
+    fonts.add(HB_SCRIPT_MATH, font_maths);
+    fonts.set_fallback(font_arial);
 
     auto runs = create_shaper_runs(mixed, fonts);
 
@@ -257,7 +277,7 @@ int main()
     std::string s = mixed_cstr;
 #endif
     Point p { 0, 0 };
-//    std::cout << "chunking: " << s << "\n";
+    //    std::cout << "chunking: " << s << "\n";
 
     draw = [&](GLFWwindow* window)
     {

@@ -48,14 +48,17 @@ struct Font
 
         void add(hb_script_t script, Font& font) { _map.emplace(script, &font); }
 
-        void set_fallback(Font& font) { _map.emplace(HB_SCRIPT_INVALID, &font); }
+        void set_fallback(Font& font) { _map.emplace(_fallback_key, &font); }
 
         Font* at(const hb_script_t key) const
         {
             if (_map.find(key) != _map.end())
                 return _map.at(key);
             else
+            {
+                printf("returning fallback\n");
                 return _map.at(_fallback_key);
+            }
         }
 
         std::unordered_map<hb_script_t, Font*> _map;
@@ -758,8 +761,12 @@ constexpr hb_script_t adapt(const SBScript sb_script)
             return HB_SCRIPT_TIBETAN;
         case SBScriptMYMR:
             return HB_SCRIPT_MYANMAR;
-        default:
+        case SBScriptZYYY:
             return HB_SCRIPT_COMMON; // or some appropriate default value
+        case SBScriptZZZZ:
+            return HB_SCRIPT_UNKNOWN;
+        default:
+            return HB_SCRIPT_LATIN;
     }
 }
 
@@ -801,26 +808,41 @@ struct ShaperRun
             s.script_info->length
         );
         auto hb_script = adapt(s.script_info->script);
-        hb_buffer_set_direction(buffer, get_hb_direction(s.level));
-        hb_buffer_set_script(buffer, hb_script);
+        hb_buffer_guess_segment_properties(buffer);
+//        hb_buffer_set_direction(buffer, get_hb_direction(s.level));
+//        hb_buffer_set_script(buffer, hb_script);
         // TODO : maybe later we'll figure out some use for this
-        hb_buffer_set_language(buffer, hb_language_get_default());
+//        hb_buffer_set_language(buffer, hb_language_get_default());
         font = s.fonts.at(hb_script);
         hb_shape(font->unicode, buffer, NULL, 0);
+
+        copy_data();
+
+        hb_buffer_destroy(buffer);
     }
 
     ~ShaperRun()
     {
         LOG_FUNC;
-        hb_buffer_destroy(buffer);
     }
 
-    auto glyph_data() const
+    void copy_data()
     {
-        const auto glyphs_n  = hb_buffer_get_length(buffer);
-        const auto infos     = hb_buffer_get_glyph_infos(buffer, nullptr);
-        const auto positions = hb_buffer_get_glyph_positions(buffer, nullptr);
-        return std::tuple { infos, positions, glyphs_n };
+        glyphs_n = hb_buffer_get_length(buffer);
+
+        infos.reserve(glyphs_n);
+        const auto infos_ptr     = hb_buffer_get_glyph_infos(buffer, nullptr);
+        for (int i = 0; i < glyphs_n; ++i)
+            infos.emplace_back(infos_ptr[i]);
+
+        positions.reserve(glyphs_n);
+        const auto pos_ptr = hb_buffer_get_glyph_positions(buffer, nullptr);
+        for (int i = 0; i < glyphs_n; ++i)
+            positions.emplace_back(pos_ptr[i]);
+    }
+
+    auto glyph_data() const{
+        return std::tuple{infos.data(), positions.data(), glyphs_n};
     }
 
     std::string language;
@@ -828,8 +850,9 @@ struct ShaperRun
     Direction direction { HB_DIRECTION_INVALID };
     Buffer buffer = nullptr;
     Font* font    = nullptr;
-//    std::vector<hb_glyph_info_t> infos;
-//    std::vector<hb_glyph_position_t> positions;
+    unsigned int glyphs_n;
+    std::vector<hb_glyph_info_t> infos;
+    std::vector<hb_glyph_position_t> positions;
 };
 
 } // namespace hb_helpers

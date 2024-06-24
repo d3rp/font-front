@@ -507,12 +507,10 @@ struct TextRenderer
     template <typename VertexDataType>
     void draw_runs(std::vector<hb_helpers::ShaperRun>& runs, Point o, Colour colour)
     {
-        static std::vector<hb_helpers::GlyphInfo> glyph_infos;
-        glyph_infos.clear();
-
         for (auto& run : runs)
         {
-//            std::cout << to_string(run);
+            static std::vector<hb_helpers::GlyphInfo> glyph_infos;
+            glyph_infos.clear();
 
             auto [hb_infos, hb_poss, n] = run.glyph_data();
             for (uint i = 0; i < n; ++i)
