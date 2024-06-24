@@ -1,6 +1,6 @@
 #pragma once
 
-#include "text.h"
+#define LOG_FUNC std::cout << __PRETTY_FUNCTION__ << "\n";
 
 // Hash function for GlyphKey
 template <class T>
@@ -57,12 +57,13 @@ void print_glyph_positions(const hb_glyph_position_t* positions, unsigned int le
         printf("\tVar: %d\n", positions[i].var.i32);
     }
 }
+
 static void print_versions(typesetting::Library& library)
 {
-    auto print_opengl_version = [&]{
-        printf("OpenGL version: %d.%d\n", GLVersion.major, GLVersion.minor);
-    };
-    auto print_freetype_version = [&] {
+    auto print_opengl_version = [&]
+    { printf("OpenGL version: %d.%d\n", GLVersion.major, GLVersion.minor); };
+    auto print_freetype_version = [&]
+    {
         FT_Int major, minor, patch;
         FT_Library_Version(library.get(), &major, &minor, &patch);
         printf("FreeType version: %d.%d.%d\n", major, minor, patch);

@@ -7,6 +7,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <unicode/ubidi.h>
+#include <unicode/unistr.h>
+
 #include "spec.h"
 #include "text.h"
 #include "shader.h"
@@ -420,6 +423,8 @@ struct TextRenderer
         int fallback_shader_index = 0
     )
     {
+        UBiDi* bidi = ubidi_open();
+
         static std::vector<ShaperChunk> chunks;
         if (shaper_depth == 0)
         {
@@ -476,10 +481,11 @@ struct TextRenderer
                 {
                     ++new_end;
                     // skip over one character, if that also isn't supported by this shaper
-                    // This matters apparently when spaces are introduced in specific shaping specs, e.g. arabic:
-                    // "أسئلة و أجوبة
-                    // And trying to render the spaces as latin chars in between will crash freetype load glyph
-                    if (new_end + 1 < uchrs.size() && !is_char_supported(shapers[shaper_depth].font, uchrs[new_end + 1]))
+                    // This matters apparently when spaces are introduced in specific shaping specs,
+                    // e.g. arabic: "أسئلة و أجوبة And trying to render the spaces as latin chars in
+                    // between will crash freetype load glyph
+                    if (new_end + 1 < uchrs.size()
+                        && !is_char_supported(shapers[shaper_depth].font, uchrs[new_end + 1]))
                         ++new_end;
                 }
 
@@ -498,6 +504,69 @@ struct TextRenderer
         return chunks;
     }
 
+    template <typename VertexDataType>
+    void draw_runs(std::vector<hb_helpers::ShaperRun>& runs, Point o, Colour colour)
+    {
+        static std::vector<hb_helpers::GlyphInfo> glyph_infos;
+        glyph_infos.clear();
+
+        for (auto& run : runs)
+        {
+//            std::cout << to_string(run);
+
+            auto [hb_infos, hb_poss, n] = run.glyph_data();
+            for (uint i = 0; i < n; ++i)
+                glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
+                    { hb_infos[i].codepoint,
+                      hb_poss[i].x_offset / 64,
+                      hb_poss[i].y_offset / 64,
+                      hb_poss[i].x_advance / 64,
+                      hb_poss[i].y_advance / 64 }
+                ));
+
+            for (auto& info : glyph_infos)
+            {
+                auto g_opt = get_glyph(*run.font, info.codepoint);
+                Glyph g    = std::invoke(
+                    [&]
+                    {
+                        if (!g_opt)
+                            throw std::runtime_error("get glyph error");
+                        else
+                            return g_opt.value();
+                    }
+                );
+                auto g_w = g.size.x, g_h = g.size.y;
+                if (g_w > 0 && g_h > 0)
+                {
+                    auto* atlas = atlases[g.tex_index].get();
+                    set_tex_id(atlas->texture);
+
+                    float glyph_x = o.x + g.bearing.x + info.x_offset;
+                    float glyph_y = o.y - (g.size.y - g.bearing.y) + info.y_offset;
+                    auto glyph_w  = (float) g.size.x;
+                    auto glyph_h  = (float) g.size.y;
+
+                    float tex_x = g.tex_offset.x / (float) atlas->width;
+                    float tex_y = g.tex_offset.y / (float) atlas->height;
+                    float tex_w = glyph_w / (float) atlas->width;
+                    float tex_h = glyph_h / (float) atlas->height;
+
+                    // update VBO for each glyph
+                    append_quad({ { { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
+                                    { glyph_x, glyph_y, tex_x, tex_y + tex_h },
+                                    { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
+
+                                    { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
+                                    { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
+                                    { glyph_x + glyph_w, glyph_y + glyph_h, tex_x + tex_w, tex_y } } });
+                }
+
+                o.x += info.x_advance;
+                o.y += info.y_advance;
+            }
+        }
+    }
     template <typename VertexDataType>
     void draw_text_yes(std::string& text, std::vector<hb_helpers::FontShaper>& shapers, Point o)
     {

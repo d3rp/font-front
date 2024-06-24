@@ -150,10 +150,10 @@ int main()
     //        HB_DIRECTION_LTR
     //    };
 
-    auto latin_cstr      = u8"älkäös Rénè! ȟ";
-    auto arabic_cstr     = u8"أسئلة و أجوبة";
-    auto arabic_no_spcs_cstr     = u8"أسئلةوأجوبة";
-    auto han_cstr        = u8"緳 踥踕";
+    auto latin_cstr          = u8"älkäös Rénè! ȟ";
+    auto arabic_cstr         = u8"أسئلة و أجوبة";
+    auto arabic_no_spcs_cstr = u8"أسئلةوأجوبة";
+    auto han_cstr            = u8"緳 踥踕";
     auto devanagari_cstr = u8"हालाँकि प्रचलित रूप पूजा";
     auto sth_cstr = u8"Z͑ͫ̓ͪ̂ͫ̽͏̴̙̤̞͉͚̯̞̠͍A̴̵̜̰͔ͫ͗͢L̠ͨͧͩ͘G̴̻͈͍͔̹̑͗̎̅͛́Ǫ̵̹̻̝̳͂̌̌͘!͖̬̰̙̗̿̋ͥͥ̂ͣ̐́́͜͞";
     auto emoji_cstr       = u8"🌮👩‍👩‍👧‍👦";
@@ -184,12 +184,29 @@ int main()
         u8"*()-_=+[{]};:',<.>/?~𝖠Β𝒞𝘋𝙴𝓕ĢȞỈ𝕵ꓗʟ𝙼ℕ০𝚸𝗤ՀꓢṰǓⅤ𝔚Ⲭ𝑌𝙕𝘢𝕤"
     };
 
-    auto mixed_cstr        = u8"Rénè ∰⩪⩭𝔠 ௹☞➾ 🌮👩";
-//    auto mixed_cstr        = u8"Rénè ∰⩪⩭𝔠 ௹☞➾ أسئلة";
-//    auto mixed_cstr        = u8"妙העולם ";
-//    auto mixed_cstr        = u8"Rénè ∰⩪⩭𝔠";
+    //    auto mixed_cstr        = u8"Rénè ∰⩪⩭𝔠 ௹☞➾ 🌮👩";
+    auto mixed_cstr = u8"huu त रू (𝔠 ௹➾ و) أجوبة x👩‍👩‍👧‍👦{é}";
+    //    auto mixed_cstr        = u8"妙העולם ";
+    //    auto mixed_cstr        = u8"Rénè ∰⩪⩭𝔠";
     Text text_sth_else_raw = { sth_cstr };
     Text text_mixed_raw    = { mixed_cstr };
+
+    hb_helpers::Boundaries b;
+    b.list_for_words(mixed_cstr);
+    std::cout << "words: " << b.word_count(mixed_cstr) << "\n";
+
+    std::string mixed = mixed_cstr;
+
+//    hb_helpers::print_direction_markers(mixed);
+//    hb_helpers::test_sheenbidi(mixed);
+    Font::Map fonts;
+    fonts.add(HB_SCRIPT_COMMON, font_latin);
+    fonts.add(HB_SCRIPT_ARABIC, font_amiri);
+    fonts.set_fallback(font_latin);
+
+    auto runs = create_shaper_runs(mixed, fonts);
+
+#if 0
 
     utf::string utf_str(text_devanagari.text.c_str());
     auto uchar_str = utf_str.as_unicode();
@@ -238,8 +255,9 @@ int main()
     shapers.emplace_back("maths", font_maths, "dflt", HB_SCRIPT_LATIN, HB_DIRECTION_LTR);
     shapers.emplace_back("fallback arial", font_arial, "", HB_SCRIPT_LATIN, HB_DIRECTION_INVALID);
     std::string s = mixed_cstr;
+#endif
     Point p { 0, 0 };
-    std::cout << "chunking: " << s << "\n";
+//    std::cout << "chunking: " << s << "\n";
 
     draw = [&](GLFWwindow* window)
     {
@@ -253,8 +271,9 @@ int main()
         auto DP_Y = [&fb_h](float y) -> float { return fb_h - y; };
 
         rdr.begin(fb_w, fb_h);
-        float x  = 200.0f;
-        float y  = 200.0f;
+        float x = 200.0f;
+        float y = 200.0f;
+#if 0
         rdr.draw_text_yes<VertexDataFormat>(s, shapers, { DP_X(x * content_scale), DP_Y(y * content_scale) });
         if (0)
         {
@@ -279,6 +298,8 @@ int main()
                 y += 50.0f;
             }
         }
+#endif
+        rdr.draw_runs<VertexDataFormat>(runs, { DP_X(x * content_scale), DP_Y(y * content_scale) }, colours::black);
         rdr.end();
     };
 
