@@ -3,23 +3,13 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H // Include FreeType header files
 #include <hb-ft.h>
-#include <hb-icu.h>
-#include <unicode/brkiter.h>
-#define BP_ONE_TO_RULE_THEM_ALL 1
-#include <utf8string.hpp>
 #include <initializer_list>
-#include <codecvt>
-#include <locale>
-
-#include <unicode/ubidi.h>
-#include <unicode/ustring.h>
 
 extern "C"
 {
 #include <SheenBidi.h>
 };
 
-#include "icu_extra/scrptrun.h"
 #include "scope_guards.h"
 #include "blueprints.h"
 #include "types.h"
@@ -201,77 +191,6 @@ struct GlyphInfo
     hb_position_t y_advance;
 };
 
-struct Boundaries
-{
-    Boundaries()
-    {
-        //        int32_t locales_n;
-        //        auto* locale = icu::Locale::getAvailableLocales(locales_n);
-        //        for (int i = 0; i < locales_n; ++i)
-        //            std::cout << locale[i].getName() << "\n";
-    }
-
-    void list_for_words(const char* c_str)
-    {
-        icu::UnicodeString ustr(c_str);
-        list_for_words(ustr);
-    }
-
-    void list_for_words(const std::string& s)
-    {
-        icu::UnicodeString ustr(s.c_str());
-        list_for_words(ustr);
-    }
-
-    void list_for_words(const icu::UnicodeString& s)
-    {
-        UErrorCode status    = U_ZERO_ERROR;
-        UErrorCode errorCode = U_ZERO_ERROR;
-        for (int i = 0; i < s.countChar32(); ++i)
-        {
-            auto uchr   = s.char32At(0);
-            auto script = uscript_getScript(uchr, &errorCode);
-            std::cout << script;
-            std::cout << " err: " << u_errorName_74(errorCode) << "\n";
-        }
-        //        hb_script_t hb_script = hb_icu_script_to_script(script);
-
-        icu::BreakIterator* bi = icu::BreakIterator::createWordInstance(icu::Locale::getUS(), status);
-        bi->setText(s);
-        int32_t p = bi->first();
-        while (p != icu::BreakIterator::DONE)
-        {
-            printf("Word oundary at position %d\n", p);
-            p = bi->next();
-        }
-        delete bi;
-    }
-
-    int word_count(const char* utf8String)
-    {
-        UText* ut          = NULL;
-        UBreakIterator* bi = NULL;
-        int wordCount      = 0;
-        UErrorCode status  = U_ZERO_ERROR;
-
-        ut = utext_openUTF8(ut, utf8String, -1, &status);
-        bi = ubrk_open(UBRK_WORD, "en_us", NULL, 0, &status);
-
-        ubrk_setUText(bi, ut, &status);
-        while (ubrk_next(bi) != UBRK_DONE)
-        {
-            if (ubrk_getRuleStatus(bi) != UBRK_WORD_NONE)
-            {
-                /* Count only words and numbers, not spaces or punctuation */
-                wordCount++;
-            }
-        }
-        utext_close(ut);
-        ubrk_close(bi);
-        assert(U_SUCCESS(status));
-        return wordCount;
-    }
-};
 
 void print_direction_markers(const std::string& text)
 {
@@ -918,39 +837,6 @@ std::string utf32_to_utf8(const char32_t* utf32, size_t n)
     return utf8;
 }
 
-// codestral vastaava
-std::string utf32_to_utf8_codestral(const char32_t* input, size_t n)
-{
-    if (input == nullptr || n == 0)
-    {
-        return ""; // Return an empty string if the input is null or has zero length.
-    }
-
-    // Deprecated without fallback:
-    // https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2017/p0618r0.html
-    std::wstring_convert<std::codecvt_utf8_utf16<char32_t>, char32_t> converter;
-    std::u32string utf32(input, n);   // Create a UTF-32 encoded string from the input pointer and
-                                      // length.
-    return converter.to_bytes(utf32); // Convert it to UTF-8 encoding and return as a std::string.
-}
-
-// debug helper
-inline std::string to_string(ShaperChunk& chunk)
-{
-    std::string text = utf32_to_utf8_codestral(
-        chunk.text_ptr->data() + chunk.range.start,
-        chunk.range.end - chunk.range.start
-    );
-    std::stringstream ss;
-    ss << "\nIndex: " << chunk.index;
-    ss << "\nText: " << text;
-    ss << "\nStart: " << chunk.range.start;
-    ss << "\nEnd: " << chunk.range.end;
-    ss << "\nLength: " << chunk.range.length;
-    ss << "\nShaper: " << chunk.shaper->name;
-    ss << "\n";
-    return ss.str();
-}
 
 std::vector<hb_helpers::ShaperRun> create_shaper_runs(std::string& text, Font::Map& fonts)
 {

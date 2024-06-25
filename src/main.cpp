@@ -204,10 +204,6 @@ int main()
     Text text_sth_else_raw = { sth_cstr };
     Text text_mixed_raw    = { mixed_cstr };
 
-    hb_helpers::Boundaries b;
-    b.list_for_words(mixed_cstr);
-    std::cout << "words: " << b.word_count(mixed_cstr) << "\n";
-
     std::string mixed    = mixed_cstr;
     std::string ultimate = ultimate_cstr;
 

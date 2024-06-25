@@ -14,48 +14,6 @@ if (MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /source-charset:utf-8)
 endif ()
 
-# ICU
-#include(FetchContent)
-#FetchContent_Declare(
-#        icu
-#        GIT_REPOSITORY https://github.com/unicode-org/icu.git
-#        GIT_TAG release-74-1  # Replace with the desired release tag
-#)
-#set(ICU_INSTALL_DIR ${CMAKE_SOURCE_DIR}/deps/icu)
-#file(MAKE_DIRECTORY ${ICU_INSTALL_DIR})
-#FetchContent_GetProperties(icu)
-##if(NOT icu_POPULATED)
-##    FetchContent_Populate(icu)
-##
-##    if (NOT icu_BINARY_DIR)
-##        message(FATAL_ERROR "ICU fetch failed...")
-##    endif()
-##    # Set ICU build and install directories
-##    set(ICU_BUILD_DIR ${icu_BINARY_DIR}/icu_build)
-##    set(ICU_INSTALL_DIR ${ICU_INSTALL_DIR})
-##    add_subdirectory(${icu_SOURCE_DIR}/icu4c/source ${ICU_BUILD_DIR})
-##    set(CMAKE_INSTALL_PREFIX ${ICU_INSTALL_DIR})
-##    add_custom_target(
-##            icu-install
-##            COMMAND ${CMAKE_COMMAND} --build ${ICU_BUILD_DIR} --target install
-##    )
-##endif()
-# Check if on macOS and using Homebrew
-if (APPLE)
-    # Execute the brew command to get the ICU prefix
-    execute_process(
-            COMMAND brew --prefix icu4c
-            OUTPUT_VARIABLE BREW_ICU_PREFIX
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
-    # Set CMAKE_PREFIX_PATH using the fetched value
-    set(CMAKE_PREFIX_PATH ${BREW_ICU_PREFIX} ${CMAKE_PREFIX_PATH})
-endif ()
-message(STATUS "brew icu prefix: ${BREW_ICU_PREFIX}")
-find_package(ICU REQUIRED COMPONENTS uc i18n data)
-include_directories("${BREW_ICU_PREFIX}/include")
-
 # Freetype 2
 find_package(Freetype REQUIRED)
 add_library(freetype ALIAS Freetype::Freetype)
@@ -73,10 +31,6 @@ target_include_directories(glad PUBLIC "deps/glad/include")
 
 # GLM
 find_package(glm REQUIRED)
-
-# utf8cpp
-add_library(utf8cpp INTERFACE deps/utf8cpp/utf8string.hpp)
-target_include_directories(utf8cpp INTERFACE "deps/utf8cpp")
 
 # sheenbidi
 set(SBidi_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/sheenbidi/Source")
@@ -111,7 +65,5 @@ target_link_libraries(${PROJECT_NAME}
         glad
         freetype
         harfbuzz
-        utf8cpp
-        ICU::uc ICU::i18n
         sheenbidi
 )
