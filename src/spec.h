@@ -4,8 +4,8 @@ namespace spec
 {
 namespace gui
 {
-constexpr int w = 800;
-constexpr int h = 600;
+constexpr int w = 2048;
+constexpr int h = 60;
 }
 
 constexpr int atlas_texture_w = 1024;

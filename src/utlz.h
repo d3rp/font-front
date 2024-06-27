@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cuchar>
+
 #define LOG_FUNC std::cout << __PRETTY_FUNCTION__ << "\n";
 
 // Hash function for GlyphKey
@@ -27,6 +29,45 @@ struct hash<pair<unsigned int, unsigned int>>
 
 namespace utlz
 {
+template <typename T>
+class Iterator
+{
+public:
+    using iterator_category = std::forward_iterator_tag;
+    using difference_type   = std::ptrdiff_t;
+    using value_type        = T;
+    using pointer           = T*; // or also value_type*
+    using reference         = T&; // or also value_type&
+
+    Iterator(pointer ptr)
+        : m_ptr(ptr)
+    {
+    }
+
+    reference operator*() const { return *m_ptr; }
+
+    pointer operator->() { return m_ptr; }
+
+    Iterator& operator++()
+    {
+        m_ptr++;
+        return *this;
+    }
+
+    Iterator operator++(int)
+    {
+        Iterator tmp = *this;
+        ++(*this);
+        return tmp;
+    }
+
+    friend bool operator==(const Iterator& a, const Iterator& b) { return a.m_ptr == b.m_ptr; }
+
+    friend bool operator!=(const Iterator& a, const Iterator& b) { return a.m_ptr != b.m_ptr; }
+
+private:
+    pointer m_ptr;
+};
 
 float to_float(FT_F26Dot6 weird_number) { return float(weird_number) * 1.0f / 64.0f; }
 
@@ -74,4 +115,79 @@ static void print_versions(typesetting::Library& library)
     print_opengl_version();
     printf("HarfBuzz version: %s\n", hb_version_string());
 }
+
+// Helper function to convert UTF-8 to UTF-32
+std::u32string utf8_to_utf32(const std::string& utf8) {
+    std::u32string utf32;
+    char32_t ch = 0;
+    int bytes = 0;
+    for (unsigned char c : utf8) {
+        if (bytes == 0) {
+            if ((c & 0x80) == 0) {
+                ch = c;
+                bytes = 1;
+            } else if ((c & 0xE0) == 0xC0) {
+                ch = c & 0x1F;
+                bytes = 2;
+            } else if ((c & 0xF0) == 0xE0) {
+                ch = c & 0x0F;
+                bytes = 3;
+            } else if ((c & 0xF8) == 0xF0) {
+                ch = c & 0x07;
+                bytes = 4;
+            } else {
+                // Invalid UTF-8
+                return std::u32string();
+            }
+        } else {
+            if ((c & 0xC0) != 0x80) {
+                // Invalid UTF-8
+                return std::u32string();
+            }
+            ch = (ch << 6) | (c & 0x3F);
+            --bytes;
+        }
+        if (bytes == 1) {
+            utf32.push_back(ch);
+            ch = 0;
+            bytes = 0;
+        }
+    }
+    if (bytes != 0) {
+        // Invalid UTF-8
+        return std::u32string();
+    }
+    return utf32;
+}
+
+// Function to check if a character is supported by the font
+inline bool is_char_supported(FT_Face& face, char32_t character) {
+    return FT_Get_Char_Index(face, character) != 0;
+}
+
+// Function to check if all characters in a UTF-8 buffer are supported by the font
+bool are_all_chars_supported(FT_Face& ftFace, std::string& u8_buffer) {
+    std::u32string u32_buffer = utf8_to_utf32(u8_buffer);
+
+    for (char32_t character : u32_buffer) {
+        if (!is_char_supported(ftFace, character)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool are_some_chars_supported(FT_Face& ftFace, std::string& u8_buffer) {
+    std::u32string u32_buffer = utf8_to_utf32(u8_buffer);
+
+    for (char32_t character : u32_buffer) {
+        if (!is_char_supported(ftFace, character)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 } // namespace utlz

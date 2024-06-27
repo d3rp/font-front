@@ -36,22 +36,64 @@ struct Font
     {
         const hb_script_t _fallback_key = HB_SCRIPT_INVALID;
 
-        void add(hb_script_t script, Font& font) { _map.emplace(script, &font); }
-
-        void set_fallback(Font& font) { _map.emplace(_fallback_key, &font); }
-
-        Font* at(const hb_script_t key) const
+        void add(hb_script_t script, std::vector<Font*> fonts)
         {
-            if (_map.find(key) != _map.end())
-                return _map.at(key);
-            else
-            {
-                printf("returning fallback\n");
-                return _map.at(_fallback_key);
-            }
+            volatile static int _ = std::invoke(
+                [&]
+                {
+                    db.emplace_back(nullptr);
+                    return 0;
+                }
+            );
+            Mapping m;
+            m.start = db.size();
+            for (auto& font : fonts)
+                db.emplace_back(font);
+            m.length = db.size() - m.start;
+            _map.emplace(script, m);
         }
 
-        std::unordered_map<hb_script_t, Font*> _map;
+        void set_fallback(Font& font) { db.at(0) = &font; }
+
+        void print_tag(hb_script_t script) const
+        {
+            char buf[5];
+            hb_tag_to_string(script, buf);
+            buf[4] = 0;
+            std::cout << "tag:" << buf << "\n";
+        }
+
+        // returns the font in the array at key+idx and how many are left in the array
+        std::tuple<int, Font*> at(const hb_script_t key, int idx) const
+        {
+            std::cout << "Querying ";
+            print_tag(key);
+            assert(idx >= 0);
+            auto it = _map.find(key);
+            if (it == _map.end())
+            {
+                printf("returning fallback\n");
+                return { 0, db.at(0) };
+            }
+            auto m = it->second;
+            assert(idx < m.length);
+            auto font_idx = m.start + idx;
+            assert(font_idx < db.size());
+
+            std::cout << "Returning ";
+            print_tag(key);
+
+            return { m.length - idx - 1, db.at(font_idx) };
+        }
+
+        struct Mapping
+        {
+            int start  = 0;
+            int length = 0;
+        };
+
+        std::vector<Font*> db;
+        std::unordered_map<hb_script_t, Mapping> _map;
     };
 
     Id id;
@@ -158,13 +200,13 @@ struct Text
 
 inline char32_t get_unicode_char(char* chars) { return {}; }
 
-inline bool is_char_supported(Font& font, char32_t character)
-{
-    if (FT_Get_Char_Index(font.face, character) == 0)
-        return false;
-
-    return true;
-}
+// inline bool is_char_supported(Font& font, char32_t character)
+//{
+//     if (FT_Get_Char_Index(font.face, character) == 0)
+//         return false;
+//
+//     return true;
+// }
 
 namespace hb_helpers
 {
@@ -190,311 +232,6 @@ struct GlyphInfo
     hb_position_t x_advance;
     hb_position_t y_advance;
 };
-
-
-void print_direction_markers(const std::string& text)
-{
-    std::cout << text << "\n";
-
-    struct Mark2
-    {
-        uint8_t _1;
-        uint8_t _2;
-        const char* name;
-
-        bool operator==(const Mark2& other) const { return (_1 == other._1 && _2 == other._2); }
-    };
-
-    struct Mark3
-    {
-        uint8_t _1;
-        uint8_t _2;
-        uint8_t _3;
-        const char* name;
-
-        bool operator==(const Mark3& other) const
-        {
-            return (_1 == other._1 && _2 == other._2 && _3 == other._3);
-        }
-    };
-
-    std::vector<Mark3> marks;
-    const uint8_t u8_3byte { 0xE2 };
-    marks.emplace_back(Mark3 { u8_3byte, 0x80, 0x8E, "ltr explicit" });
-    marks.emplace_back(Mark3 { u8_3byte, 0x80, 0x8F, "rtl explicit" });
-
-    marks.emplace_back(Mark3 { u8_3byte, 0x80, 0xAA, "ltr embedded" });
-    marks.emplace_back(Mark3 { u8_3byte, 0x80, 0xAB, "rtl embedded" });
-
-    marks.emplace_back(Mark3 { u8_3byte, 0x80, 0xAC, "pop direction" });
-
-    marks.emplace_back(Mark3 { u8_3byte, 0x80, 0xAD, "ltr override" });
-    marks.emplace_back(Mark3 { u8_3byte, 0x80, 0xAE, "rtl override" });
-
-    marks.emplace_back(Mark3 { u8_3byte, 0x81, 0xA6, "ltr isolate" });
-    marks.emplace_back(Mark3 { u8_3byte, 0x81, 0xA7, "ltr isolate" });
-
-    marks.emplace_back(Mark3 { u8_3byte, 0x81, 0xA8, "first strong isolate" });
-    marks.emplace_back(Mark3 { u8_3byte, 0x81, 0xA9, "pop directional isolate" });
-
-    marks.emplace_back(Mark3 { u8_3byte, 0x81, 0xAA, "inhibit symmetrical swapping" });
-    marks.emplace_back(Mark3 { u8_3byte, 0x81, 0xAB, "activate symmetrical swapping" });
-
-    marks.emplace_back(Mark3 { u8_3byte, 0x81, 0xAC, "inhibit arabic form shaping" });
-    marks.emplace_back(Mark3 { u8_3byte, 0x81, 0xAD, "activate arabic form shaping" });
-
-    Mark2 alm { 0xD8, 0x9C, "arabic letter mark" };
-
-    for (int i = 0; i < text.length() - 3; ++i)
-    {
-        if (u8_3byte != (uint8_t) text[i])
-            continue;
-
-        printf("Found 3 byte utf8 char @ %d: ", i);
-        bool print_char = true;
-        for (auto& mark : marks)
-        {
-            if ((text[i + 1] == (char) mark._2) && (text[i + 2] == (char) mark._3))
-            {
-                printf("%s @ %d\n", mark.name, i);
-                print_char = false;
-            }
-        }
-        if (print_char)
-            std::cout << text.substr(i, 3) << "\n";
-    }
-
-    for (int i = 0; i < text.length() - 2; ++i)
-    {
-        if ((char) 0xD8 != text[i])
-            continue;
-
-        printf("Found 2 byte utf8 char @ %d: ", i);
-        if ((text[i] == (char) alm._1) && (text[i + 1] == (char) alm._2))
-            printf("%s @ %d\n", alm.name, i);
-        else
-            std::cout << text.substr(i, 2) << "\n";
-    }
-}
-
-// Define a function to map SheenBidi script codes to HarfBuzz script codes
-hb_script_t get_harfbuzz_script(const char* sheenbidi_script)
-{
-    // Use HarfBuzz's function to convert ISO 15924 script codes to hb_script_t
-    return hb_script_from_string(sheenbidi_script, -1);
-}
-
-void test_sheenbidi(const std::string& text)
-{
-    constexpr uint8_t LEVEL_X = UINT8_MAX;
-
-    SBCodepointSequence sb_str { SBStringEncodingUTF8, (void*) text.c_str(), text.length() };
-    // Create a bidi algorithm instance
-    SBAlgorithmRef bidiAlgorithm = SBAlgorithmCreate(&sb_str);
-
-    // Create a paragraph for the entire text
-    SBParagraphRef paragraph = SBAlgorithmCreateParagraph(bidiAlgorithm, 0, UINT8_MAX, SBLevelDefaultLTR);
-
-    // Get the length of the paragraph
-    SBUInteger paragraphLength = SBParagraphGetLength(paragraph);
-
-    // Create a line from the paragraph
-    SBLineRef line      = SBParagraphCreateLine(paragraph, 0, paragraphLength);
-    SBUInteger runCount = SBLineGetRunCount(line);
-    const SBRun* runs   = SBLineGetRunsPtr(line);
-    std::cout << "-- Direction runs:\n";
-    for (SBUInteger i = 0; i < runCount; i++)
-    {
-        std::cout << text.substr(runs[i].offset, runs[i].length) << "\n[";
-        printf("offset: %ld, ", (long) runs[i].offset);
-        printf("len: %ld, ", (long) runs[i].length);
-        printf("level: %ld]\n\n", (long) runs[i].level);
-    }
-    // Create a mirror locator and load the line into it
-    SBMirrorLocatorRef mirrorLocator = SBMirrorLocatorCreate();
-    SBMirrorLocatorLoadLine(mirrorLocator, line, (void*) text.c_str());
-    const SBMirrorAgent* mirrorAgent = SBMirrorLocatorGetAgent(mirrorLocator);
-
-    // Log the details of each mirror
-    while (SBMirrorLocatorMoveNext(mirrorLocator))
-    {
-        printf("Mirror Index: %ld\n", (long) mirrorAgent->index);
-        printf("Actual Code Point: %ld\n", (long) mirrorAgent->codepoint);
-        printf("Mirrored Code Point: %ld\n\n", (long) mirrorAgent->mirror);
-    }
-    SBScriptLocatorRef script_loc = SBScriptLocatorCreate();
-    SBScriptLocatorLoadCodepoints(script_loc, &sb_str);
-
-    // Initialize HarfBuzz buffer
-    hb_buffer_t* hb_buffer = hb_buffer_create();
-    hb_buffer_add_utf8(hb_buffer, text.c_str(), -1, 0, -1);
-
-    // Set the direction based on the bidi algorithm
-    hb_buffer_set_direction(hb_buffer, HB_DIRECTION_LTR); // Adjust as needed
-    //    hb_buffer_guess_segment_properties(hb_buffer);
-
-    const SBScriptAgent* scriptAgent = SBScriptLocatorGetAgent(script_loc);
-
-    std::cout << "-- Script runs:\n";
-    // Iterate over script runs and set script properties in HarfBuzz
-    while (SBScriptLocatorMoveNext(script_loc))
-    {
-        std::cout << scriptAgent->script << "\n";
-
-        printf("offset: %ld, ", (long) scriptAgent->offset);
-        printf("len: %ld]\n\n", (long) scriptAgent->length);
-
-        // Assuming you have functions to map SheenBidi script codes to HarfBuzz script codes
-        // set_segment_properties is a hypothetical function that sets properties in HarfBuzz buffer
-        //        set_segment_properties(hb_buffer, scriptAgent->offset, scriptAgent->length,
-        //        hb_script);
-    }
-
-    // Perform shaping
-    //    hb_shape(hb_font, hb_buffer, NULL, 0);
-
-    //    SBScriptLocatorRelease(script_loc);
-    SBMirrorLocatorRelease(mirrorLocator);
-    SBLineRelease(line);
-    SBParagraphRelease(paragraph);
-    SBAlgorithmRelease(bidiAlgorithm);
-#if 0
-    SBAlgorithmRef algorithm = SBAlgorithmCreate(&sb_str);
-    SBLevel input_level;
-    SBParagraphRef paragraph = SBAlgorithmCreateParagraph(algorithm, 0, uc_v.size(), input_level);
-    SBLevel pg_level = SBParagraphGetBaseLevel(paragraph);
-    if (pg_level == LEVEL_X) {
-        m_paragraphLevel = paragraphlevel;
-    }
-
-    if (paragraphlevel == m_paragraphLevel) {
-        SBLineRef line = SBParagraphCreateLine(paragraph, 0, m_charCount);
-        m_runCount = SBLineGetRunCount(line);
-        m_runArray = SBLineGetRunsPtr(line);
-
-        passed &= testLevels();
-        passed &= testOrder();
-
-        if (m_bidiMirroring) {
-            loadMirrors();
-            SBMirrorLocatorLoadLine(m_mirrorLocator, line, (void *)m_genChars);
-            passed &= testMirrors();
-        }
-
-        SBLineRelease(line);
-    } else {
-        if (Configuration::DISPLAY_ERROR_DETAILS) {
-            cout << "Test failed due to paragraph level mismatch." << endl;
-            cout << "  Discovered Paragraph Level: " << (int)paragraphlevel << endl;
-            cout << "  Expected Paragraph Level: " << (int)m_paragraphLevel << endl;
-        }
-
-        passed &= false;
-    }
-
-    SBParagraphRelease(paragraph);
-    SBAlgorithmRelease(algorithm);
-return passed;
-#endif
-}
-
-// void print_direction_changes(const std::string& text)
-//{
-//     UErrorCode status = U_ZERO_ERROR;
-//
-//     int32_t utf16Length = 0;
-//     icu::UnicodeString icu_str(text.c_str());
-////    u_strFromUTF8(nullptr, 0, &utf16Length, text.c_str(), -1, &status);
-////    if (U_FAILURE(status))
-////    {
-////        std::cerr << "Error converting UTF-8 to UTF-16: " << u_errorName(status) << '\n';
-////        return;
-////    }
-//
-////    auto* utf16Text = new UChar[utf16Length + 1]; // +1 for the null terminator.
-////    status          = U_ZERO_ERROR;
-////    u_strFromUTF8(utf16Text, utf16Length + 1, &utf16Length, text.c_str(), -1, &status);
-////    if (U_FAILURE(status))
-////    {
-////        std::cerr << "Error converting UTF-8 to UTF-16: " << u_errorName(status) << '\n';
-////        delete[] utf16Text;
-////        return;
-////    }
-//
-//    // Create a bidirectional text object.
-////    UBiDi* bidi = ubidi_openSized(utf16Length, 0, &status);
-//    icu::LocalUBiDiPointer bidi;
-//
-////    UBiDi* bidi = ubidi_open();
-////    if (u_failure(status))
-////    {
-////        std::cerr << "error creating ubidi: " << u_errorname(status) << '\n';
-////        delete[] utf16text;
-////        return;
-////    }
-//
-//    // Set the paragraph to the text we want to analyze.
-////    ubidi_setPara(bidi, utf16Text, utf16Length, UBIDI_DEFAULT_LTR, nullptr, &status);
-//    ubidi_setPara(bidi, icu_str, utf16Length, UBIDI_DEFAULT_LTR, nullptr, &status);
-//    if (U_FAILURE(status))
-//    {
-//        std::cerr << "Error setting paragraph: " << u_errorName(status) << '\n';
-//        delete[] utf16Text;
-//        ubidi_close(bidi);
-//        return;
-//    }
-//
-//    // Get the directional runs.
-//    int32_t count = ubidi_countRuns(bidi, &status);
-//    if (U_FAILURE(status))
-//    {
-//        std::cerr << "Error counting runs: " << u_errorName(status) << '\n';
-//        delete[] utf16Text;
-//        ubidi_close(bidi);
-//        return;
-//    }
-//
-//    UBiDiLevel levels[count];
-//    int32_t indices[count + 1];
-//    status = U_ZERO_ERROR;
-//    // Iterate through each run and check its direction level.
-//    UBiDiLevel lastLevel = UBIDI_DEFAULT_LTR;
-//    int32_t start = 0, length = 1;
-//    for (;;)
-//    {
-//        UBiDiLevel level;
-//        ubidi_getLogicalRun(bidi, start, &length, &level);
-//        if (level != lastLevel && length > 0)
-//        { // Direction change.
-//            std::cout << "Change at index " << start << ": ";
-//            switch (lastLevel)
-//            {
-//                case UBIDI_LTR:
-//                    std::cout << "LTR -> RTL\n";
-//                    break;
-//                case UBIDI_RTL:
-//                    std::cout << "RTL -> LTR\n";
-//                    break;
-//            }
-//            lastLevel = level;
-//        }
-//        start += length;
-//        if (start >= utf16Length)
-//        {
-//            break;
-//        }
-//        ++length; // Overlap by 1 to catch direction changes between runs.
-//    }
-//
-//    // Clean up.
-//    delete[] utf16Text;
-//    ubidi_close(bidi);
-//}
-
-namespace test_ustr
-{
-inline void run() {}
-} // namespace test_ustr
 
 struct Shaper
 {
@@ -707,71 +444,138 @@ struct ShaperRun
     {
         LOG_FUNC;
         assert(!s.fonts._map.empty());
+        buffer = hb_buffer_create();
 
-        auto get_hb_direction = [](SBLevel level)
+        std::u32string u32_str;
         {
-            const bool is_odd = level & 1;
-            if (is_odd)
-                return HB_DIRECTION_RTL;
-            else
-                return HB_DIRECTION_LTR;
+            auto tmp = s.text.substr(s.script_info->offset, s.script_info->length);
+            u32_str  = utlz::utf8_to_utf32(tmp);
+            std::cout << "Matching: " << tmp << "\n";
+        }
+
+        hb_buffer_add_utf32(buffer, (const uint32_t*) u32_str.c_str(), -1, 0, -1);
+        hb_buffer_guess_segment_properties(buffer);
+        auto hb_script = hb_buffer_get_script(buffer);
+        hb_buffer_destroy(buffer);
+
+        // collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
+        // emojis)
+        struct FontRun
+        {
+            Font* font_ptr;
+            unsigned int start;
+            unsigned int length;
         };
 
-        buffer = hb_buffer_create();
-        hb_buffer_add_utf8(
-            buffer,
-            s.text.c_str(),
-            //            s.script_info->length,
-            s.text.length(),
-            s.script_info->offset,
-            s.script_info->length
+        std::vector<FontRun> font_runs;
+
+        unsigned int font_run_start      = 0;
+        unsigned int font_run_end        = 0;
+        int font_idx                     = 0;
+        auto [fonts_remaining, font_ptr] = s.fonts.at(hb_script, font_idx++);
+        while (fonts_remaining >= 0)
+        {
+            while (font_run_end < u32_str.size())
+            {
+                // skip until there's a character match with the font
+                if (!utlz::is_char_supported(font_ptr->face, u32_str[font_run_end]))
+                {
+                    ++font_run_start;
+                    ++font_run_end;
+                    continue;
+                }
+
+                // iterate end idx until there's no match
+                while (font_run_end < u32_str.size()
+                       && utlz::is_char_supported(font_ptr->face, u32_str[font_run_end++]))
+                    ;
+
+                // collect the substr
+                font_runs.emplace_back(FontRun { .font_ptr = font_ptr,
+                                                 .start    = font_run_start,
+                                                 .length   = (font_run_end - font_run_start) });
+
+                font_run_start = font_run_end;
+            }
+
+            // iterate the next available font
+            if (fonts_remaining > 0)
+            {
+                auto [remaining, fp] = s.fonts.at(hb_script, font_idx++);
+                fonts_remaining      = remaining;
+                font_ptr             = fp;
+            }
+            else
+                fonts_remaining = -1;
+        }
+        std::vector<std::pair<unsigned int, unsigned int>> ranges;
+        for (auto& run : font_runs)
+            ranges.emplace_back(run.start, run.start + run.length);
+
+        std::sort(
+            ranges.begin(),
+            ranges.end(),
+            [](auto lhs, auto rhs) { return lhs.first < rhs.first; }
         );
-        auto hb_script = adapt(s.script_info->script);
-        hb_buffer_guess_segment_properties(buffer);
-//        hb_buffer_set_direction(buffer, get_hb_direction(s.level));
-//        hb_buffer_set_script(buffer, hb_script);
-        // TODO : maybe later we'll figure out some use for this
-//        hb_buffer_set_language(buffer, hb_language_get_default());
-        font = s.fonts.at(hb_script);
-        hb_shape(font->unicode, buffer, NULL, 0);
 
-        copy_data();
+        for (int i = 0; i < ranges.size() - 1; ++i)
+        {
+            auto& lhs = ranges[i];
+            auto& rhs = ranges[i + 1];
+            printf("s: %d, e: %d\n", lhs.first, rhs.second);
+            assert(lhs.second == rhs.first);
+        }
 
-        hb_buffer_destroy(buffer);
+        for (auto& run : font_runs)
+        {
+            buffer = hb_buffer_create();
+            hb_buffer_add_utf32(buffer, (const uint32_t*) u32_str.c_str(), run.length, run.start, run.length);
+            hb_shape(run.font_ptr->unicode, buffer, NULL, 0);
+
+            copy_data(run.font_ptr);
+
+            hb_buffer_destroy(buffer);
+        }
     }
 
-    ~ShaperRun()
-    {
-        LOG_FUNC;
-    }
+    ~ShaperRun() { LOG_FUNC; }
 
-    void copy_data()
+    void copy_data(Font* font)
     {
         glyphs_n = hb_buffer_get_length(buffer);
 
+        std::vector<hb_glyph_info_t> infos;
         infos.reserve(glyphs_n);
-        const auto infos_ptr     = hb_buffer_get_glyph_infos(buffer, nullptr);
+        const auto infos_ptr = hb_buffer_get_glyph_infos(buffer, nullptr);
         for (int i = 0; i < glyphs_n; ++i)
             infos.emplace_back(infos_ptr[i]);
 
+        std::vector<hb_glyph_position_t> positions;
         positions.reserve(glyphs_n);
         const auto pos_ptr = hb_buffer_get_glyph_positions(buffer, nullptr);
         for (int i = 0; i < glyphs_n; ++i)
             positions.emplace_back(pos_ptr[i]);
+
+        assert(infos.size() == positions.size());
+        glyph_infos.emplace_back(GlyphInfo { std::move(infos), std::move(positions), font });
     }
 
-    auto glyph_data() const{
-        return std::tuple{infos.data(), positions.data(), glyphs_n};
-    }
+    struct GlyphInfo
+    {
+        std::vector<hb_glyph_info_t> hb_info;
+        std::vector<hb_glyph_position_t> positions;
+        Font* font;
+    };
+
+    const std::vector<GlyphInfo>& get_data() const { return glyph_infos; }
 
     std::string language;
     Script script { HB_SCRIPT_INVALID };
     Direction direction { HB_DIRECTION_INVALID };
     Buffer buffer = nullptr;
-    Font* font    = nullptr;
     unsigned int glyphs_n;
-    std::vector<hb_glyph_info_t> infos;
-    std::vector<hb_glyph_position_t> positions;
+
+    std::vector<GlyphInfo> glyph_infos;
 };
 
 } // namespace hb_helpers
@@ -837,7 +641,6 @@ std::string utf32_to_utf8(const char32_t* utf32, size_t n)
     return utf8;
 }
 
-
 std::vector<hb_helpers::ShaperRun> create_shaper_runs(std::string& text, Font::Map& fonts)
 {
     using namespace hb_helpers;
@@ -862,7 +665,7 @@ std::vector<hb_helpers::ShaperRun> create_shaper_runs(std::string& text, Font::M
     // Script runs are assumed to be more granular and coincide with direction runs, thus
     // we'll merge the to into basically script runs with the appropriate specs such as direction
     int dir_run_idx = 0;
-    while (SBScriptLocatorMoveNext(script_loc))
+    while (dir_run_idx < text.length() && SBScriptLocatorMoveNext(script_loc))
     {
         while (script_info->offset > direction_runs[dir_run_idx].offset)
             ++dir_run_idx;

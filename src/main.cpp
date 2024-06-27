@@ -126,20 +126,27 @@ int main()
     // russian
     auto font_dejavu = add_font(font_dir + "/DejaVuSerif.ttf");
     on_scope_exit([&] { destroy_font(font_dejavu); });
+    // han
     auto font_han = add_font(font_dir + "/fireflysung.ttf");
     on_scope_exit([&] { destroy_font(font_han); });
-    // other
-    auto font_maths = add_font(font_dir + "/NotoSansMath-Regular.ttf");
-    on_scope_exit([&] { destroy_font(font_maths); });
-    auto font_emoji = add_font(font_dir + "/NotoEmoji-VariableFont_wght.ttf");
-    on_scope_exit([&] { destroy_font(font_emoji); });
+    // georgian
+    auto font_georgian = add_font(font_dir + "/NotoSansGeorgian-VariableFont_wdthwght.ttf");
+    on_scope_exit([&] { destroy_font(font_georgian); });
+    auto font_myanmar = add_font(font_dir + "/NotoSansMyanmar-Thin.ttf");
+    on_scope_exit([&] { destroy_font(font_myanmar); });
 
+    // ideograms
     auto font_simple_chinese = add_font(font_dir + "/NotoSansSC-VariableFont_wght.ttf");
     on_scope_exit([&] { destroy_font(font_simple_chinese); });
     auto font_katakana = add_font(font_dir + "/NotoSansJP-VariableFont_wght.ttf");
     on_scope_exit([&] { destroy_font(font_katakana); });
     auto font_korean = add_font(font_dir + "/NotoSansKR-VariableFont_wght.ttf");
     on_scope_exit([&] { destroy_font(font_korean); });
+    // other
+    auto font_maths = add_font(font_dir + "/NotoSansMath-Regular.ttf");
+    on_scope_exit([&] { destroy_font(font_maths); });
+    auto font_emoji = add_font(font_dir + "/NotoEmoji-VariableFont_wght.ttf");
+    on_scope_exit([&] { destroy_font(font_emoji); });
 
     auto maths_cstr = u8"⩤⪉⦫∷𝞿∰⩪⩭𝔠";
     Text text_maths { maths_cstr, "dflt", HB_SCRIPT_LATIN, HB_DIRECTION_LTR };
@@ -195,10 +202,21 @@ int main()
     //        auto mixed_cstr = u8"huu त रू (𝔠 ௹➾ و) أجوبة
     //        x👩‍👩‍👧‍👦{é}";
     auto mixed_cstr = u8"huu (त रू 𝔠 ௹➾ أجو)بة x👩‍👩‍👧‍👦{é}";
-    auto ultimate_cstr = u8"@L字Яかカทب가अΩאகಕდകకԱကકকਕລ̈កཀඅአތକ﷐ᓀܐㄅߘᏄꊈࠀϢᠦⰀꕉᬅⵞꚠᯀꨀꦄꤊᰀᤀꓨࡀꯀᦀᱚꢂᮃꠀᥐᨠꪀ𐬀𑀅ᨀ"
-                        u8"ᝃ𐊷𒀀𐠀𐐔𓅓𐌰ᜣ𐡀𐭠𐭀𑂃𐨀𐀀𐊀𐤠ᚏ𐌈𐎠𐩠𐰀𐒀ꡀ𐤀ꤰᚠ𐑐ᜃᝣ𐎀𑄃𐦠𐦀𖼀𑆃𑃐𑚀⠎𐔷𖫦𛰠𐔀𑌕𖬜𑈈𐙇𑅒𐫁𞠂𑘎𖩏𐪕𐢖𐡳𑫀𐍫𐮏𑖎𑊾𑒄𑢴𑜗𔐀𐣴𑊏𐲡𝡐𞤉𑰎𑱲𐒵"
-                        u8"𘈩𑐒𑴐𛇄𑩜𑨋𑠋𑵱𐴒𑻥𖹀𐼙𐽂𐿱𞄈𑧎𞋡𐾿𑤌𘱥𐺈𒿥𐽼𖪼𞊐𐖂𑼛𞓦𐵝𖄜𖵅𞗐𑯄𐗂𑎒𖶓𐥐𞛕"
-                        u8"𑷆";
+    auto ultimate_cstr
+        = u8"@L字Яかカทب가अΩאகಕდകకԱကકকਕລ̈កཀඅአތକ﷐ᓀܐㄅߘᏄꊈࠀϢᠦⰀꕉᬅⵞꚠᯀꨀꦄꤊᰀᤀꓨࡀꯀᦀᱚꢂᮃꠀᥐ"
+          u8"ᨠ"
+          u8"ꪀ"
+          u8"𐬀"
+          u8"𑀅"
+          u8"ᨀ"
+          u8"ᝃ𐊷𒀀𐠀𐐔𓅓𐌰ᜣ𐡀𐭠𐭀𑂃𐨀𐀀𐊀𐤠ᚏ𐌈𐎠𐩠𐰀𐒀ꡀ𐤀ꤰᚠ𐑐ᜃᝣ𐎀𑄃𐦠𐦀𖼀𑆃𑃐𑚀⠎𐔷𖫦𛰠𐔀𑌕𖬜𑈈𐙇𑅒𐫁𞠂𑘎𖩏𐪕𐢖𐡳𑫀𐍫𐮏𑖎𑊾𑒄𑢴𑜗𔐀𐣴𑊏𐲡𝡐𞤉𑰎𑱲𐒵"
+          u8"𘈩𑐒𑴐𛇄𑩜𑨋𑠋𑵱𐴒𑻥𖹀𐼙𐽂𐿱𞄈𑧎𞋡𐾿𑤌𘱥𐺈𒿥𐽼𖪼𞊐𐖂𑼛𞓦𐵝𖄜𖵅𞗐𑯄"
+          u8"𐗂"
+          u8"𑎒"
+          u8"𖶓"
+          u8"𐥐"
+          u8"𞛕"
+          u8"𑷆";
     //    auto mixed_cstr = u8"Diipaوdaa";
     //    auto mixed_cstr        = u8"Rénè ∰⩪⩭𝔠";
     Text text_sth_else_raw = { sth_cstr };
@@ -210,14 +228,27 @@ int main()
     //    hb_helpers::print_direction_markers(mixed);
     //    hb_helpers::test_sheenbidi(mixed);
     Font::Map fonts;
-    fonts.add(HB_SCRIPT_LATIN, font_latin);
-    fonts.add(HB_SCRIPT_ARABIC, font_amiri);
-    fonts.add(HB_SCRIPT_HEBREW, font_sanskrit);
-    fonts.add(HB_SCRIPT_KATAKANA, font_katakana);
-//    fonts.add(HB_SCRIPT_HANGUL, font_korean);
-    fonts.add(HB_SCRIPT_DEVANAGARI, font_arial);
-    fonts.add(HB_SCRIPT_HAN, font_han);
-    fonts.add(HB_SCRIPT_MATH, font_maths);
+    using V = std::vector<Font*>;
+    fonts.add(
+        HB_SCRIPT_LATIN,
+        V {
+            &font_latin,
+            &font_emoji,
+        }
+    );
+    fonts.add(HB_SCRIPT_GEORGIAN, V { &font_georgian });
+    fonts.add(HB_SCRIPT_HAN, V { &font_simple_chinese });
+    fonts.add(HB_SCRIPT_COMMON, V { &font_emoji, &font_maths });
+    fonts.add(HB_SCRIPT_ARABIC, V { &font_amiri });
+    //    fonts.add(HB_SCRIPT_HEBREW, V { &font_sanskrit });
+    //    fonts.add(HB_SCRIPT_TAMIL, V { &font_sanskrit });
+    fonts.add(HB_SCRIPT_KATAKANA, V { &font_katakana });
+    fonts.add(HB_SCRIPT_HANGUL, V { &font_korean });
+    fonts.add(HB_SCRIPT_DEVANAGARI, V { &font_sanskrit });
+    fonts.add(HB_SCRIPT_MYANMAR, V { &font_myanmar });
+    fonts.add(HB_SCRIPT_THAI, V { &font_sarabun });
+    //    fonts.add(HB_SCRIPT_HAN, V { &font_han });
+    fonts.add(HB_SCRIPT_MATH, V { &font_maths });
     fonts.set_fallback(font_arial);
 
     auto runs = create_shaper_runs(mixed, fonts);
@@ -287,8 +318,8 @@ int main()
         auto DP_Y = [&fb_h](float y) -> float { return fb_h - y; };
 
         rdr.begin(fb_w, fb_h);
-        float x = 200.0f;
-        float y = 200.0f;
+        float x = 10.0f;
+        float y = 30.0f;
 #if 0
         rdr.draw_text_yes<VertexDataFormat>(s, shapers, { DP_X(x * content_scale), DP_Y(y * content_scale) });
         if (0)
@@ -315,7 +346,7 @@ int main()
             }
         }
 #endif
-        rdr.draw_runs<VertexDataFormat>(runs, { DP_X(x * content_scale), DP_Y(y * content_scale) }, colours::black);
+        rdr.draw_runs<VertexDataFormat>(runs, { DP_X(x * content_scale), DP_Y(y * content_scale) }, colours::red);
         rdr.end();
     };
 

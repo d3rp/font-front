@@ -374,7 +374,9 @@ struct TextRenderer
         // glyph needs to be created
         auto face = font.face;
         if (FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT))
-            throw std::runtime_error("Glyph load failed at: " + std::to_string(glyph_index));
+            FT_Load_Glyph(face, 0, FT_LOAD_DEFAULT);
+        //            throw std::runtime_error("Glyph load failed at: " +
+        //            std::to_string(glyph_index));
 
         // TODO: use SDF
         if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_SDF))
@@ -411,65 +413,67 @@ struct TextRenderer
         cur_quad++;
     }
 
-
     template <typename VertexDataType>
     void draw_runs(std::vector<hb_helpers::ShaperRun>& runs, Point o, Colour colour)
     {
+        set_colour(colour);
         for (auto& run : runs)
         {
             static std::vector<hb_helpers::GlyphInfo> glyph_infos;
             glyph_infos.clear();
 
-            auto [hb_infos, hb_poss, n] = run.glyph_data();
-            for (uint i = 0; i < n; ++i)
-                glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
-                    { hb_infos[i].codepoint,
-                      hb_poss[i].x_offset / 64,
-                      hb_poss[i].y_offset / 64,
-                      hb_poss[i].x_advance / 64,
-                      hb_poss[i].y_advance / 64 }
-                ));
-
-            for (auto& info : glyph_infos)
+            for (auto& fr : run.get_data())
             {
-                auto g_opt = get_glyph(*run.font, info.codepoint);
-                Glyph g    = std::invoke(
-                    [&]
-                    {
-                        if (!g_opt)
-                            throw std::runtime_error("get glyph error");
-                        else
-                            return g_opt.value();
-                    }
-                );
-                auto g_w = g.size.x, g_h = g.size.y;
-                if (g_w > 0 && g_h > 0)
+                for (uint i = 0; i < fr.hb_info.size(); ++i)
+                    glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
+                        { fr.hb_info[i].codepoint,
+                          fr.positions[i].x_offset / 64,
+                          fr.positions[i].y_offset / 64,
+                          fr.positions[i].x_advance / 64,
+                          fr.positions[i].y_advance / 64 }
+                    ));
+
+                for (auto& info : glyph_infos)
                 {
-                    auto* atlas = atlases[g.tex_index].get();
-                    set_tex_id(atlas->texture);
+                    auto g_opt = get_glyph(*fr.font, info.codepoint);
+                    Glyph g = std::invoke(
+                        [&]
+                        {
+                            if (!g_opt)
+                                throw std::runtime_error("get glyph error");
+                            else
+                                return g_opt.value();
+                        }
+                    );
+                    auto g_w = g.size.x, g_h = g.size.y;
+                    if (g_w > 0 && g_h > 0)
+                    {
+                        auto* atlas = atlases[g.tex_index].get();
+                        set_tex_id(atlas->texture);
 
-                    float glyph_x = o.x + g.bearing.x + info.x_offset;
-                    float glyph_y = o.y - (g.size.y - g.bearing.y) + info.y_offset;
-                    auto glyph_w  = (float) g.size.x;
-                    auto glyph_h  = (float) g.size.y;
+                        float glyph_x = o.x + g.bearing.x + info.x_offset;
+                        float glyph_y = o.y - (g.size.y - g.bearing.y) + info.y_offset;
+                        auto glyph_w  = (float) g.size.x;
+                        auto glyph_h  = (float) g.size.y;
 
-                    float tex_x = g.tex_offset.x / (float) atlas->width;
-                    float tex_y = g.tex_offset.y / (float) atlas->height;
-                    float tex_w = glyph_w / (float) atlas->width;
-                    float tex_h = glyph_h / (float) atlas->height;
+                        float tex_x = g.tex_offset.x / (float) atlas->width;
+                        float tex_y = g.tex_offset.y / (float) atlas->height;
+                        float tex_w = glyph_w / (float) atlas->width;
+                        float tex_h = glyph_h / (float) atlas->height;
 
-                    // update VBO for each glyph
-                    append_quad({ { { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
-                                    { glyph_x, glyph_y, tex_x, tex_y + tex_h },
-                                    { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
+                        // update VBO for each glyph
+                        append_quad({ { { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
+                                        { glyph_x, glyph_y, tex_x, tex_y + tex_h },
+                                        { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
 
-                                    { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
-                                    { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
-                                    { glyph_x + glyph_w, glyph_y + glyph_h, tex_x + tex_w, tex_y } } });
+                                        { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
+                                        { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
+                                        { glyph_x + glyph_w, glyph_y + glyph_h, tex_x + tex_w, tex_y } } });
+                    }
+
+                    o.x += 30; //info.x_advance;
+                    o.y += info.y_advance;
                 }
-
-                o.x += info.x_advance;
-                o.y += info.y_advance;
             }
         }
     }
