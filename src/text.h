@@ -4,6 +4,7 @@
 #include FT_FREETYPE_H // Include FreeType header files
 #include <hb-ft.h>
 #include <initializer_list>
+#include <utility>
 
 extern "C"
 {
@@ -38,50 +39,56 @@ struct Font
 
         void add(hb_script_t script, std::vector<Font*> fonts)
         {
+            // call once trick
             volatile static int _ = std::invoke(
                 [&]
                 {
+                    // space for fallback font
                     db.emplace_back(nullptr);
                     return 0;
                 }
             );
             Mapping m;
             m.start = db.size();
-            for (auto& font : fonts)
+            for (auto font : fonts)
                 db.emplace_back(font);
             m.length = db.size() - m.start;
             _map.emplace(script, m);
         }
 
-        void set_fallback(Font& font) { db.at(0) = &font; }
+        void set_fallback(std::vector<Font*> fonts) { add(_fallback_key, std::move(fonts)); }
 
         void print_tag(hb_script_t script) const
         {
             char buf[5];
             hb_tag_to_string(script, buf);
             buf[4] = 0;
-            std::cout << "tag:" << buf << "\n";
+            std::cout << buf;
         }
 
         // returns the font in the array at key+idx and how many are left in the array
         std::tuple<int, Font*> at(const hb_script_t key, int idx) const
         {
-            std::cout << "Querying ";
+            std::cout << "[tag: \"";
             print_tag(key);
+            std::cout << "\" -> \"";
             assert(idx >= 0);
             auto it = _map.find(key);
             if (it == _map.end())
             {
-                printf("returning fallback\n");
-                return { 0, db.at(0) };
+                auto fb = _map.find(_fallback_key);
+                assert(fb != _map.end()); // need to set a fallback font set
+                auto fb_idx = fb->second.start + fb->second.length - 1;
+                printf("\" ... returning fallback]\n");
+                return { 0, db.at(fb_idx) };
             }
             auto m = it->second;
             assert(idx < m.length);
             auto font_idx = m.start + idx;
             assert(font_idx < db.size());
 
-            std::cout << "Returning ";
             print_tag(key);
+            std::cout << "\"]\n";
 
             return { m.length - idx - 1, db.at(font_idx) };
         }
@@ -99,7 +106,7 @@ struct Font
     Id id;
     Face face;
     UnicodeType unicode;
-    Blob blob;
+    //    Blob blob;
     float font_size;
     float content_scale;
 };
@@ -198,16 +205,6 @@ struct Text
     hb_direction_t direction;
 };
 
-inline char32_t get_unicode_char(char* chars) { return {}; }
-
-// inline bool is_char_supported(Font& font, char32_t character)
-//{
-//     if (FT_Get_Char_Index(font.face, character) == 0)
-//         return false;
-//
-//     return true;
-// }
-
 namespace hb_helpers
 {
 namespace Feature
@@ -233,53 +230,7 @@ struct GlyphInfo
     hb_position_t y_advance;
 };
 
-struct Shaper
-{
-
-    using Buffer = hb_buffer_t*;
-
-    Shaper() = default;
-
-    ~Shaper() { hb_buffer_destroy(buffer); }
-
-    auto shape(const Text& text, const Font& font)
-    {
-        if (buffer)
-            hb_buffer_destroy(buffer);
-
-        buffer = hb_buffer_create();
-
-        // If you don't know the direction, script, and language
-        if (text.language.empty() || text.language == "emoji" || text.language == "maths")
-            hb_buffer_guess_segment_properties(buffer);
-        else
-        {
-            hb_buffer_set_direction(buffer, text.direction);
-            hb_buffer_set_script(buffer, text.script);
-            hb_buffer_set_language(buffer, hb_language_from_string(text.language.c_str(), -1));
-        }
-
-        hb_buffer_add_utf8(buffer, text.text.c_str(), -1, 0, -1);
-
-        // beef
-        hb_shape(font.unicode, buffer, nullptr, 0);
-
-        unsigned int glyph_n = hb_buffer_get_length(buffer);
-        auto* glyph_info     = hb_buffer_get_glyph_infos(buffer, nullptr);
-        auto* glyph_pos      = hb_buffer_get_glyph_positions(buffer, nullptr);
-
-        //        utlz::print_glyph_infos(glyph_info, glyph_n);
-        //        utlz::print_glyph_positions(glyph_pos, glyph_n);
-
-        return std::tuple { glyph_info, glyph_pos, glyph_n };
-    }
-
-    void add_feature(hb_feature_t feature) { features.emplace_back(feature); }
-
-    std::vector<hb_feature_t> features;
-    Buffer buffer = nullptr;
-};
-
+#if 0
 struct FontShaper
 {
     using Buffer = hb_buffer_t*;
@@ -372,60 +323,9 @@ struct FontShaper
     Buffer buffer = nullptr;
     std::vector<hb_feature_t> features;
 };
+#endif
 
-constexpr hb_script_t adapt(const SBScript sb_script)
-{
-    switch (sb_script)
-    {
-        case SBScriptLATN:
-            return HB_SCRIPT_LATIN;
-        case SBScriptGREK:
-            return HB_SCRIPT_GREEK;
-        case SBScriptCYRL:
-            return HB_SCRIPT_CYRILLIC;
-        case SBScriptARMI:
-            return HB_SCRIPT_ARMENIAN;
-        case SBScriptHEBR:
-            return HB_SCRIPT_HEBREW;
-        case SBScriptARAB:
-            return HB_SCRIPT_ARABIC;
-        case SBScriptDEVA:
-            return HB_SCRIPT_DEVANAGARI;
-        case SBScriptBENG:
-            return HB_SCRIPT_BENGALI;
-        case SBScriptGURU:
-            return HB_SCRIPT_GURMUKHI;
-        case SBScriptGUJR:
-            return HB_SCRIPT_GUJARATI;
-        case SBScriptORYA:
-            return HB_SCRIPT_ORIYA;
-        case SBScriptTAML:
-            return HB_SCRIPT_TAMIL;
-        case SBScriptTELU:
-            return HB_SCRIPT_TELUGU;
-        case SBScriptKNDA:
-            return HB_SCRIPT_KANNADA;
-        case SBScriptMLYM:
-            return HB_SCRIPT_MALAYALAM;
-        case SBScriptSINH:
-            return HB_SCRIPT_SINHALA;
-        case SBScriptTHAI:
-            return HB_SCRIPT_THAI;
-        case SBScriptLAOO:
-            return HB_SCRIPT_LAO;
-        case SBScriptTIBT:
-            return HB_SCRIPT_TIBETAN;
-        case SBScriptMYMR:
-            return HB_SCRIPT_MYANMAR;
-        case SBScriptZYYY:
-            return HB_SCRIPT_COMMON; // or some appropriate default value
-        case SBScriptZZZZ:
-            return HB_SCRIPT_UNKNOWN;
-        default:
-            return HB_SCRIPT_LATIN;
-    }
-}
-
+#if 0
 struct ShaperRun
 {
     using Buffer    = hb_buffer_t*;
@@ -434,7 +334,7 @@ struct ShaperRun
 
     struct Specs
     {
-        const std::string& text;
+        const std::u32string& text;
         const Font::Map& fonts;
         const SBScriptAgent* script_info;
         const SBLevel level;
@@ -444,98 +344,6 @@ struct ShaperRun
     {
         LOG_FUNC;
         assert(!s.fonts._map.empty());
-        buffer = hb_buffer_create();
-
-        std::u32string u32_str;
-        {
-            auto tmp = s.text.substr(s.script_info->offset, s.script_info->length);
-            u32_str  = utlz::utf8_to_utf32(tmp);
-            std::cout << "Matching: " << tmp << "\n";
-        }
-
-        hb_buffer_add_utf32(buffer, (const uint32_t*) u32_str.c_str(), -1, 0, -1);
-        hb_buffer_guess_segment_properties(buffer);
-        auto hb_script = hb_buffer_get_script(buffer);
-        hb_buffer_destroy(buffer);
-
-        // collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
-        // emojis)
-        struct FontRun
-        {
-            Font* font_ptr;
-            unsigned int start;
-            unsigned int length;
-        };
-
-        std::vector<FontRun> font_runs;
-
-        unsigned int font_run_start      = 0;
-        unsigned int font_run_end        = 0;
-        int font_idx                     = 0;
-        auto [fonts_remaining, font_ptr] = s.fonts.at(hb_script, font_idx++);
-        while (fonts_remaining >= 0)
-        {
-            while (font_run_end < u32_str.size())
-            {
-                // skip until there's a character match with the font
-                if (!utlz::is_char_supported(font_ptr->face, u32_str[font_run_end]))
-                {
-                    ++font_run_start;
-                    ++font_run_end;
-                    continue;
-                }
-
-                // iterate end idx until there's no match
-                while (font_run_end < u32_str.size()
-                       && utlz::is_char_supported(font_ptr->face, u32_str[font_run_end++]))
-                    ;
-
-                // collect the substr
-                font_runs.emplace_back(FontRun { .font_ptr = font_ptr,
-                                                 .start    = font_run_start,
-                                                 .length   = (font_run_end - font_run_start) });
-
-                font_run_start = font_run_end;
-            }
-
-            // iterate the next available font
-            if (fonts_remaining > 0)
-            {
-                auto [remaining, fp] = s.fonts.at(hb_script, font_idx++);
-                fonts_remaining      = remaining;
-                font_ptr             = fp;
-            }
-            else
-                fonts_remaining = -1;
-        }
-        std::vector<std::pair<unsigned int, unsigned int>> ranges;
-        for (auto& run : font_runs)
-            ranges.emplace_back(run.start, run.start + run.length);
-
-        std::sort(
-            ranges.begin(),
-            ranges.end(),
-            [](auto lhs, auto rhs) { return lhs.first < rhs.first; }
-        );
-
-        for (int i = 0; i < ranges.size() - 1; ++i)
-        {
-            auto& lhs = ranges[i];
-            auto& rhs = ranges[i + 1];
-            printf("s: %d, e: %d\n", lhs.first, rhs.second);
-            assert(lhs.second == rhs.first);
-        }
-
-        for (auto& run : font_runs)
-        {
-            buffer = hb_buffer_create();
-            hb_buffer_add_utf32(buffer, (const uint32_t*) u32_str.c_str(), run.length, run.start, run.length);
-            hb_shape(run.font_ptr->unicode, buffer, NULL, 0);
-
-            copy_data(run.font_ptr);
-
-            hb_buffer_destroy(buffer);
-        }
     }
 
     ~ShaperRun() { LOG_FUNC; }
@@ -574,12 +382,12 @@ struct ShaperRun
     Direction direction { HB_DIRECTION_INVALID };
     Buffer buffer = nullptr;
     unsigned int glyphs_n;
-
-    std::vector<GlyphInfo> glyph_infos;
 };
+#endif
 
 } // namespace hb_helpers
 
+#if 0
 struct ShaperChunk
 {
     std::vector<char32_t>* text_ptr = nullptr;
@@ -594,64 +402,31 @@ struct ShaperChunk
     hb_helpers::FontShaper* shaper = nullptr;
     int index                      = 0;
 };
+#endif
 
-// gpt4 pitkästä tavarasta
-std::string utf32_to_utf8(const char32_t* utf32, size_t n)
+struct RunItem
 {
-    std::string utf8;
-    utf8.reserve(n * 4); // Reserve space to avoid multiple allocations.
+    std::vector<hb_glyph_info_t> hb_info;
+    std::vector<hb_glyph_position_t> positions;
+    unsigned int start;
+    unsigned int length;
+    Font* font;
+};
 
-    for (size_t i = 0; i < n; ++i)
-    {
-        char32_t ch = utf32[i];
-
-        if (ch <= 0x7F)
-        {
-            // 1-byte sequence: 0xxxxxxx
-            utf8.push_back(static_cast<char>(ch));
-        }
-        else if (ch <= 0x7FF)
-        {
-            // 2-byte sequence: 110xxxxx 10xxxxxx
-            utf8.push_back(static_cast<char>(0xC0 | ((ch >> 6) & 0x1F)));
-            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-        }
-        else if (ch <= 0xFFFF)
-        {
-            // 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx
-            utf8.push_back(static_cast<char>(0xE0 | ((ch >> 12) & 0x0F)));
-            utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
-            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-        }
-        else if (ch <= 0x10FFFF)
-        {
-            // 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-            utf8.push_back(static_cast<char>(0xF0 | ((ch >> 18) & 0x07)));
-            utf8.push_back(static_cast<char>(0x80 | ((ch >> 12) & 0x3F)));
-            utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
-            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-        }
-        else
-        {
-            // Invalid UTF-32 character, handle error
-            // For now, we'll just skip invalid characters
-        }
-    }
-
-    return utf8;
-}
-
-std::vector<hb_helpers::ShaperRun> create_shaper_runs(std::string& text, Font::Map& fonts)
+std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
 {
     using namespace hb_helpers;
 
-    std::vector<ShaperRun> result;
-    result.reserve(text.length() / 2);
+    std::vector<RunItem> run_infos;
 
-    SBCodepointSequence sb_str { SBStringEncodingUTF8, (void*) text.c_str(), text.length() };
-    SBAlgorithmRef bidi       = SBAlgorithmCreate(&sb_str);
-    constexpr uint8_t LEVEL_X = UINT8_MAX;
-    SBParagraphRef paragraph  = SBAlgorithmCreateParagraph(bidi, 0, LEVEL_X, SBLevelDefaultLTR);
+    run_infos.reserve(utf8txt.length() / 2);
+
+    auto u32_str = utlz::utf8to32(utf8txt);
+
+    SBCodepointSequence sb_str { SBStringEncodingUTF32, (void*) u32_str.c_str(), u32_str.length() };
+    SBAlgorithmRef bidi        = SBAlgorithmCreate(&sb_str);
+    constexpr uint32_t LEVEL_X = UINT32_MAX;
+    SBParagraphRef paragraph   = SBAlgorithmCreateParagraph(bidi, 0, LEVEL_X, SBLevelDefaultLTR);
     SBLineRef line = SBParagraphCreateLine(paragraph, 0, SBParagraphGetLength(paragraph));
     const SBRun* direction_runs = SBLineGetRunsPtr(line);
     SBUInteger runs_n           = SBLineGetRunCount(line);
@@ -659,18 +434,207 @@ std::vector<hb_helpers::ShaperRun> create_shaper_runs(std::string& text, Font::M
     SBScriptLocatorRef script_loc = SBScriptLocatorCreate();
     SBScriptLocatorLoadCodepoints(script_loc, &sb_str);
 
-    // used to write the specs when calling move next
+    // specs container when calling move next
     const SBScriptAgent* script_info = SBScriptLocatorGetAgent(script_loc);
 
+    // TODO: create a iterator by chunks of 256 or sth
+    constexpr int mask_length = 512;
+    assert(u32_str.length() < mask_length);
+    std::bitset<mask_length> mask;
+
+    unsigned int run_start = 0;
+    unsigned int run_end   = 0;
     // Script runs are assumed to be more granular and coincide with direction runs, thus
     // we'll merge the to into basically script runs with the appropriate specs such as direction
     int dir_run_idx = 0;
-    while (dir_run_idx < text.length() && SBScriptLocatorMoveNext(script_loc))
+    while (dir_run_idx < u32_str.length() && SBScriptLocatorMoveNext(script_loc))
     {
+
+        printf(" -- script offset: %d\n", script_info->offset);
         while (script_info->offset > direction_runs[dir_run_idx].offset)
             ++dir_run_idx;
 
-        result.emplace_back(ShaperRun::Specs { text, fonts, script_info, direction_runs[dir_run_idx].level });
+        {
+            auto run_txt = u32_str.substr(script_info->offset, script_info->length);
+            std::cout << "Matching: \"" << utlz::utf32to8(run_txt) << "\" ";
+        }
+
+        auto buffer = hb_buffer_create();
+        hb_buffer_add_utf32(
+            buffer,
+            (const uint32_t*) u32_str.c_str(),
+            -1,
+            script_info->offset,
+            script_info->length
+        );
+        hb_buffer_guess_segment_properties(buffer);
+        auto font_key = hb_buffer_get_script(buffer);
+        hb_buffer_destroy(buffer);
+
+        const auto script_start = script_info->offset;
+        const auto script_end   = script_start + script_info->length;
+
+        // collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
+        // emojis)
+        struct FontRun
+        {
+            Font* font_ptr;
+            unsigned int start;
+            unsigned int length;
+        };
+        std::vector<FontRun> font_runs;
+
+        int font_idx                     = 0;
+        auto [fonts_remaining, font_ptr] = fonts.at(font_key, font_idx++);
+        bool script_segment_resolved     = false;
+        bool fallback_tried = false;
+
+        collect_runs:
+        do
+        {
+            run_start = script_info->offset;
+            // search for starting point that is left unresolved
+            while (run_start < script_end && mask.test(run_start))
+                ++run_start;
+            printf("font offset %d (remaining %d)\n", run_start, fonts_remaining);
+
+            run_end = run_start;
+            // collect all runs fitting to this font
+            while (run_end < script_end)
+            {
+                // skip until there's a character match with the font
+                if (!utlz::is_char_supported(font_ptr->face, u32_str[run_end]))
+                {
+                    ++run_start;
+                    ++run_end;
+                    continue;
+                }
+
+                // iterate end idx until there's no match while marking these chars as resolved
+                while (run_end < script_end && utlz::is_char_supported(font_ptr->face, u32_str[run_end]))
+                {
+                    mask.set(run_end);
+                    ++run_end;
+                }
+
+                printf("[%d, %d]: %d\n", run_start, run_end, font_ptr->id);
+                // collect the substr
+                font_runs.emplace_back(
+                    FontRun { .font_ptr = font_ptr, .start = run_start, .length = (run_end - run_start) }
+                );
+                run_start = run_end;
+            }
+
+            script_segment_resolved = true;
+            for (int i = script_start; i < script_end; ++i)
+            {
+                std::cout << mask[i];
+                script_segment_resolved &= mask[i];
+            }
+            std::cout << "\n";
+
+            if (fonts_remaining > 0)
+            {
+                // iterate the next available font
+                auto [remaining, fp] = fonts.at(font_key, font_idx++);
+                fonts_remaining      = remaining;
+                font_ptr             = fp;
+            }
+
+        } while (fonts_remaining > 0 && !script_segment_resolved);
+
+        if (!fallback_tried)
+        {
+            font_key = fonts._fallback_key;
+            font_idx = 0;
+            fallback_tried = true;
+            auto [remaining, fp] = fonts.at(font_key, font_idx++);
+            fonts_remaining      = remaining;
+            font_ptr             = fp;
+
+            goto collect_runs;
+        }
+
+//        while (!script_segment_resolved)
+//        {
+//            // search for starting point that is left unresolved
+//            run_start = script_start;
+//            while (run_start < script_end && mask.test(run_start))
+//                ++run_start;
+//            printf("font offset %d (remaining %d)\n", run_start, fonts_remaining);
+//
+//            // iterate end idx until there's no match while marking these chars as resolved
+//            run_end = run_start;
+//            while (run_end < script_end && !mask.test(run_end))
+//            {
+//                mask.set(run_end);
+//                ++run_end;
+//            }
+//
+//            // collect the substr
+//            font_runs.emplace_back(FontRun { .font_ptr = fonts.at(fonts._fallback_key),
+//                                             .start    = run_start,
+//                                             .length   = (run_end - run_start) });
+//            script_segment_resolved = true;
+//            for (int i = script_start; i < script_end; ++i)
+//                script_segment_resolved &= mask[i];
+//        }
+
+        std::cout << "mask: " << mask << "\n";
+
+#if 0
+        { // debugging
+            std::vector<std::pair<unsigned int, unsigned int>> ranges;
+            for (const auto& run : font_runs)
+                ranges.emplace_back(run.start, run.length);
+
+            std::sort(
+                ranges.begin(),
+                ranges.end(),
+                [](auto lhs, auto rhs) { return lhs.first < rhs.first; }
+            );
+
+            for (int i = 0; i < ranges.size() - 1; ++i)
+            {
+                auto& lhs = ranges[i];
+                auto& rhs = ranges[i + 1];
+                printf("s: %d, l: %d\n", lhs.first, rhs.second);
+                //            assert(lhs.second == rhs.first);
+            }
+        }
+#endif
+
+        for (auto& run : font_runs)
+        {
+            buffer = hb_buffer_create();
+            hb_buffer_add_utf32(buffer, (const uint32_t*) u32_str.c_str(), u32_str.length(), run.start, run.length);
+            hb_buffer_guess_segment_properties(buffer);
+            hb_shape(run.font_ptr->unicode, buffer, NULL, 0);
+
+            auto tmp = u32_str.substr(run.start, run.length);
+
+            auto glyphs_n = hb_buffer_get_length(buffer);
+
+            std::vector<hb_glyph_info_t> infos;
+            infos.reserve(glyphs_n);
+            const auto infos_ptr = hb_buffer_get_glyph_infos(buffer, nullptr);
+            for (int i = 0; i < glyphs_n; ++i)
+                infos.emplace_back(infos_ptr[i]);
+
+            std::vector<hb_glyph_position_t> positions;
+            positions.reserve(glyphs_n);
+            const auto pos_ptr = hb_buffer_get_glyph_positions(buffer, nullptr);
+            for (int i = 0; i < glyphs_n; ++i)
+                positions.emplace_back(pos_ptr[i]);
+
+            assert(infos.size() == positions.size());
+
+            run_infos.emplace_back(
+                RunItem { std::move(infos), std::move(positions), run.start, run.length, run.font_ptr }
+            );
+
+            hb_buffer_destroy(buffer);
+        }
     }
 
     SBScriptLocatorRelease(script_loc);
@@ -678,7 +642,12 @@ std::vector<hb_helpers::ShaperRun> create_shaper_runs(std::string& text, Font::M
     SBParagraphRelease(paragraph);
     SBAlgorithmRelease(bidi);
 
-    return result;
+    std::sort(
+        run_infos.begin(),
+        run_infos.end(),
+        [](auto& lhs, auto& rhs) { return lhs.start < rhs.start; }
+    );
+    return run_infos;
 }
 
 } // namespace typesetting

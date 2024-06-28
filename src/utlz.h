@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cuchar>
+#include <utf8.h>
 
 #define LOG_FUNC std::cout << __PRETTY_FUNCTION__ << "\n";
 
@@ -29,6 +30,9 @@ struct hash<pair<unsigned int, unsigned int>>
 
 namespace utlz
 {
+
+using namespace utf8;
+
 template <typename T>
 class Iterator
 {
@@ -116,61 +120,127 @@ static void print_versions(typesetting::Library& library)
     printf("HarfBuzz version: %s\n", hb_version_string());
 }
 
+#if 0
+// gpt4 pitkästä tavarasta
+std::string utf32_to_utf8(const char32_t* utf32, size_t n)
+{
+    std::string utf8;
+    utf8.reserve(n * 4); // Reserve space to avoid multiple allocations.
+
+    for (size_t i = 0; i < n; ++i)
+    {
+        char32_t ch = utf32[i];
+
+        if (ch <= 0x7F)
+        {
+            // 1-byte sequence: 0xxxxxxx
+            utf8.push_back(static_cast<char>(ch));
+        }
+        else if (ch <= 0x7FF)
+        {
+            // 2-byte sequence: 110xxxxx 10xxxxxx
+            utf8.push_back(static_cast<char>(0xC0 | ((ch >> 6) & 0x1F)));
+            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        }
+        else if (ch <= 0xFFFF)
+        {
+            // 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx
+            utf8.push_back(static_cast<char>(0xE0 | ((ch >> 12) & 0x0F)));
+            utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        }
+        else if (ch <= 0x10FFFF)
+        {
+            // 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+            utf8.push_back(static_cast<char>(0xF0 | ((ch >> 18) & 0x07)));
+            utf8.push_back(static_cast<char>(0x80 | ((ch >> 12) & 0x3F)));
+            utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        }
+        else
+        {
+            // Invalid UTF-32 character, handle error
+            // For now, we'll just skip invalid characters
+        }
+    }
+
+    return utf8;
+}
+
 // Helper function to convert UTF-8 to UTF-32
-std::u32string utf8_to_utf32(const std::string& utf8) {
+std::u32string utf8_to_utf32(const std::string& utf8)
+{
+    constexpr auto invalid_default = []() -> std::u32string { return {}; };
+
     std::u32string utf32;
     char32_t ch = 0;
-    int bytes = 0;
-    for (unsigned char c : utf8) {
-        if (bytes == 0) {
-            if ((c & 0x80) == 0) {
-                ch = c;
+    int bytes   = 0;
+
+    for (unsigned char c : utf8)
+    {
+        if (bytes == 0)
+        {
+            if ((c & 0x80) == 0)
+            {
+                ch    = c;
                 bytes = 1;
-            } else if ((c & 0xE0) == 0xC0) {
-                ch = c & 0x1F;
+            }
+            else if ((c & 0xE0) == 0xC0)
+            {
+                ch    = c & 0x1F;
                 bytes = 2;
-            } else if ((c & 0xF0) == 0xE0) {
-                ch = c & 0x0F;
+            }
+            else if ((c & 0xF0) == 0xE0)
+            {
+                ch    = c & 0x0F;
                 bytes = 3;
-            } else if ((c & 0xF8) == 0xF0) {
-                ch = c & 0x07;
+            }
+            else if ((c & 0xF8) == 0xF0)
+            {
+                ch    = c & 0x07;
                 bytes = 4;
-            } else {
-                // Invalid UTF-8
-                return std::u32string();
             }
-        } else {
-            if ((c & 0xC0) != 0x80) {
-                // Invalid UTF-8
-                return std::u32string();
-            }
+            else
+                return invalid_default();
+        }
+        else
+        {
+            if ((c & 0xC0) != 0x80)
+                return invalid_default();
+
             ch = (ch << 6) | (c & 0x3F);
             --bytes;
         }
-        if (bytes == 1) {
+        if (bytes == 1)
+        {
             utf32.push_back(ch);
-            ch = 0;
+            ch    = 0;
             bytes = 0;
         }
     }
-    if (bytes != 0) {
-        // Invalid UTF-8
-        return std::u32string();
-    }
+
+    if (bytes != 0)
+        return invalid_default();
+
     return utf32;
 }
+#endif
 
 // Function to check if a character is supported by the font
-inline bool is_char_supported(FT_Face& face, char32_t character) {
+inline bool is_char_supported(FT_Face& face, char32_t character)
+{
     return FT_Get_Char_Index(face, character) != 0;
 }
 
 // Function to check if all characters in a UTF-8 buffer are supported by the font
-bool are_all_chars_supported(FT_Face& ftFace, std::string& u8_buffer) {
-    std::u32string u32_buffer = utf8_to_utf32(u8_buffer);
+bool are_all_chars_supported(FT_Face& ftFace, std::string& u8_buffer)
+{
+    std::u32string u32_buffer = utf8to32(u8_buffer);
 
-    for (char32_t character : u32_buffer) {
-        if (!is_char_supported(ftFace, character)) {
+    for (char32_t character : u32_buffer)
+    {
+        if (!is_char_supported(ftFace, character))
+        {
             return false;
         }
     }
@@ -178,16 +248,5 @@ bool are_all_chars_supported(FT_Face& ftFace, std::string& u8_buffer) {
     return true;
 }
 
-bool are_some_chars_supported(FT_Face& ftFace, std::string& u8_buffer) {
-    std::u32string u32_buffer = utf8_to_utf32(u8_buffer);
-
-    for (char32_t character : u32_buffer) {
-        if (!is_char_supported(ftFace, character)) {
-            return false;
-        }
-    }
-
-    return true;
-}
 
 } // namespace utlz

@@ -57,6 +57,7 @@ struct VertexDataFormat
     base_t data[spec::vertex_data::triangle_points_n][spec::vertex_data::pos_points_n];
 };
 
+#if 0 // maybe a variant for ShaperRun
 // Wrapper for text to pass for Text Renderer
 template <typename VertexDataType>
 struct RenderableText
@@ -100,6 +101,7 @@ struct RenderableText
 
     mutable bool dirty = true;
 };
+#endif
 
 using GlyphKey = std::pair<unsigned int, unsigned int>;
 
@@ -203,8 +205,7 @@ struct Atlas
     unsigned int texture {};
 };
 
-// Passes shit to the shader
-struct TextRenderer
+struct GlRenderer
 {
     bool init(int textures_n, int def_max_quads)
     {
@@ -232,17 +233,9 @@ struct TextRenderer
             0
         );
         glBindVertexArray(0);
-        for (int i = 0; i < textures_n; i++)
-        {
-            std::unique_ptr<Atlas> t = std::make_unique<Atlas>();
-            if (!t->init(spec::atlas_texture_w, spec::atlas_texture_h))
-                return false;
 
-            atlases.emplace_back(std::move(t));
-            dyn_atlases.push_back(0);
-        }
-
-        line.tex_index = -1;
+        if (!inherited_init(textures_n))
+            return false;
 
         vertices = (float*) malloc(max_quads * sizeof(VertexDataFormat));
         if (!vertices)
@@ -317,8 +310,49 @@ struct TextRenderer
         last_tex_id = tex_id;
     }
 
+protected:
+    virtual bool inherited_init(int) = 0;
+
+public:
+    VertexDataFormat::base_t* vertices;
+
+    // vertex array and vertex buffer objects
+    GLuint vao, vbo;
+    Colour last_colour;
+
+    unsigned int last_tex_id   = 0;
+    uint64_t textures_required = 0;
+    uint64_t textures_hit      = 0;
+    uint64_t textures_evicted  = 0;
+
+    GLsizeiptr max_quads;
+    GLsizeiptr cur_quad;
+
+    ShaderProgram program;
+};
+
+// Passes shit to the shader
+struct TextRenderer : GlRenderer
+{
+    virtual bool inherited_init(int textures_n) override
+    {
+        for (int i = 0; i < textures_n; i++)
+        {
+            std::unique_ptr<Atlas> t = std::make_unique<Atlas>();
+            if (!t->init(spec::atlas_texture_w, spec::atlas_texture_h))
+                return false;
+
+            atlases.emplace_back(std::move(t));
+            dyn_atlases.push_back(0);
+        }
+
+        line.tex_index = -1;
+
+        return true;
+    }
+
     // adds and update glyph (returns revised version)
-    Glyph add_to_atlas(Glyph glyph, const uint8_t* data)
+    Glyph add_to_atlas(Glyph glyph, const unsigned char* data)
     {
         for (size_t i = 0; i < atlases.size(); ++i)
         {
@@ -414,7 +448,7 @@ struct TextRenderer
     }
 
     template <typename VertexDataType>
-    void draw_runs(std::vector<hb_helpers::ShaperRun>& runs, Point o, Colour colour)
+    void draw_runs(std::vector<RunItem>& runs, Point o, Colour colour)
     {
         set_colour(colour);
         for (auto& run : runs)
@@ -422,114 +456,58 @@ struct TextRenderer
             static std::vector<hb_helpers::GlyphInfo> glyph_infos;
             glyph_infos.clear();
 
-            for (auto& fr : run.get_data())
-            {
-                for (uint i = 0; i < fr.hb_info.size(); ++i)
-                    glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
-                        { fr.hb_info[i].codepoint,
-                          fr.positions[i].x_offset / 64,
-                          fr.positions[i].y_offset / 64,
-                          fr.positions[i].x_advance / 64,
-                          fr.positions[i].y_advance / 64 }
-                    ));
+            for (uint i = 0; i < run.hb_info.size(); ++i)
+                // Freetype: The advance vector is expressed in 1/64 of pixels, and is truncated
+                // to integer pixels on each iteration.
+                glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
+                    { run.hb_info[i].codepoint,
+                      run.positions[i].x_offset / 64,
+                      run.positions[i].y_offset / 64,
+                      run.positions[i].x_advance / 64,
+                      run.positions[i].y_advance / 64 }
+                ));
 
-                for (auto& info : glyph_infos)
-                {
-                    auto g_opt = get_glyph(*fr.font, info.codepoint);
-                    Glyph g = std::invoke(
-                        [&]
-                        {
-                            if (!g_opt)
-                                throw std::runtime_error("get glyph error");
-                            else
-                                return g_opt.value();
-                        }
-                    );
-                    auto g_w = g.size.x, g_h = g.size.y;
-                    if (g_w > 0 && g_h > 0)
+            for (auto& info : glyph_infos)
+            {
+                auto g_opt = get_glyph(*run.font, info.codepoint);
+                Glyph g    = std::invoke(
+                    [&]
                     {
-                        auto* atlas = atlases[g.tex_index].get();
-                        set_tex_id(atlas->texture);
-
-                        float glyph_x = o.x + g.bearing.x + info.x_offset;
-                        float glyph_y = o.y - (g.size.y - g.bearing.y) + info.y_offset;
-                        auto glyph_w  = (float) g.size.x;
-                        auto glyph_h  = (float) g.size.y;
-
-                        float tex_x = g.tex_offset.x / (float) atlas->width;
-                        float tex_y = g.tex_offset.y / (float) atlas->height;
-                        float tex_w = glyph_w / (float) atlas->width;
-                        float tex_h = glyph_h / (float) atlas->height;
-
-                        // update VBO for each glyph
-                        append_quad({ { { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
-                                        { glyph_x, glyph_y, tex_x, tex_y + tex_h },
-                                        { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
-
-                                        { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
-                                        { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
-                                        { glyph_x + glyph_w, glyph_y + glyph_h, tex_x + tex_w, tex_y } } });
+                        if (!g_opt)
+                            throw std::runtime_error("get glyph error");
+                        else
+                            return g_opt.value();
                     }
-
-                    o.x += 30; //info.x_advance;
-                    o.y += info.y_advance;
-                }
-            }
-        }
-    }
-
-    template <typename VertexDataType>
-    void draw_text(RenderableText<VertexDataType>& renderable, Point o)
-    {
-        draw_text(renderable, o, renderable.colour);
-    }
-
-    template <typename VertexDataType>
-    void draw_text(RenderableText<VertexDataType>& renderable, Point o, const Colour colour)
-    {
-        set_colour(colour);
-        renderable.update();
-
-        for (auto& info : renderable.glyph_infos)
-        {
-            auto g_opt = get_glyph(renderable.font, info.codepoint);
-            Glyph g    = std::invoke(
-                [&]
+                );
+                auto g_w = g.size.x, g_h = g.size.y;
+                if (g_w > 0 && g_h > 0)
                 {
-                    if (!g_opt)
-                        throw std::runtime_error("get glyph error");
-                    else
-                        return g_opt.value();
+                    auto* atlas = atlases[g.tex_index].get();
+                    set_tex_id(atlas->texture);
+
+                    float glyph_x = o.x + g.bearing.x + info.x_offset;
+                    float glyph_y = o.y - (g.size.y - g.bearing.y) + info.y_offset;
+                    auto glyph_w  = (float) g.size.x;
+                    auto glyph_h  = (float) g.size.y;
+
+                    float tex_x = g.tex_offset.x / (float) atlas->width;
+                    float tex_y = g.tex_offset.y / (float) atlas->height;
+                    float tex_w = glyph_w / (float) atlas->width;
+                    float tex_h = glyph_h / (float) atlas->height;
+
+                    // update VBO for each glyph
+                    append_quad({ { { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
+                                    { glyph_x, glyph_y, tex_x, tex_y + tex_h },
+                                    { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
+
+                                    { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
+                                    { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
+                                    { glyph_x + glyph_w, glyph_y + glyph_h, tex_x + tex_w, tex_y } } });
                 }
-            );
-            auto g_w = g.size.x, g_h = g.size.y;
-            if (g_w > 0 && g_h > 0)
-            {
-                auto* atlas = atlases[g.tex_index].get();
-                set_tex_id(atlas->texture);
 
-                float glyph_x = o.x + g.bearing.x + info.x_offset;
-                float glyph_y = o.y - (g.size.y - g.bearing.y) + info.y_offset;
-                auto glyph_w  = (float) g.size.x;
-                auto glyph_h  = (float) g.size.y;
-
-                float tex_x = g.tex_offset.x / (float) atlas->width;
-                float tex_y = g.tex_offset.y / (float) atlas->height;
-                float tex_w = glyph_w / (float) atlas->width;
-                float tex_h = glyph_h / (float) atlas->height;
-
-                // update VBO for each glyph
-                append_quad({ { { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
-                                { glyph_x, glyph_y, tex_x, tex_y + tex_h },
-                                { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
-
-                                { glyph_x, glyph_y + glyph_h, tex_x, tex_y },
-                                { glyph_x + glyph_w, glyph_y, tex_x + tex_w, tex_y + tex_h },
-                                { glyph_x + glyph_w, glyph_y + glyph_h, tex_x + tex_w, tex_y } } });
+                o.x += info.x_advance;
+                o.y += info.y_advance;
             }
-
-            o.x += info.x_advance;
-            o.y += info.y_advance;
         }
     }
 
@@ -560,29 +538,13 @@ struct TextRenderer
         fprintf(stdout, "\n");
     }
 
-    VertexDataFormat::base_t* vertices;
-
-    // vertex array and vertex buffer objects
-    GLuint vao, vbo;
-    Colour last_colour;
-
     using Atlases = std::vector<std::unique_ptr<Atlas>>;
     Atlases atlases;
-    using DynamicAtlases = std::vector<unsigned int>;
-    DynamicAtlases dyn_atlases;
+    using AtlasGen = std::vector<unsigned int>;
+    AtlasGen dyn_atlases;
 
     GlyphCache glyphs;
     Glyph line;
-
-    ShaderProgram program;
-
-    unsigned int last_tex_id   = 0;
-    uint64_t textures_required = 0;
-    uint64_t textures_hit      = 0;
-    uint64_t textures_evicted  = 0;
-
-    GLsizeiptr max_quads;
-    GLsizeiptr cur_quad;
 };
 
 } // namespace typesetting

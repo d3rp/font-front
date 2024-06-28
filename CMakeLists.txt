@@ -18,6 +18,9 @@ endif ()
 find_package(Freetype REQUIRED)
 add_library(freetype ALIAS Freetype::Freetype)
 
+# utfcpp
+target_include_directories(${PROJECT_NAME} PUBLIC "deps/utfcpp")
+
 # Harfbuzz
 add_subdirectory(deps/harfbuzz)
 
