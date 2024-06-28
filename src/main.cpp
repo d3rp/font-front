@@ -189,7 +189,7 @@ int main()
         test::lorem::russian,
         test::adhoc::emojis,
         test::adhoc::mixed_cstr,
-        test::adhoc::maths_cstr
+        test::adhoc::maths_cstr,
     };
     std::vector<std::vector<RunItem>> all_runs;
     for (auto& test_str : all_test_strs)
@@ -197,6 +197,8 @@ int main()
         std::string s(test_str);
         all_runs.emplace_back(create_shaper_runs(s, fonts));
     }
+    std::string s(test::adhoc::zalgo);
+    auto zalgo_run = create_shaper_runs(s, fonts);
 
 //    auto runs = create_shaper_runs(test_str, fonts);
 
@@ -221,6 +223,9 @@ int main()
             rdr.draw_runs<VertexDataFormat>(runs, { DP_X(x * content_scale), DP_Y(y * content_scale) }, colours::red);
             y += 40.0f;
         }
+        y+=40.0f;
+        x+=400.0f;
+        rdr.draw_runs<VertexDataFormat>(zalgo_run, { DP_X(x * content_scale), DP_Y(y * content_scale) }, colours::blue);
         rdr.end();
     };
 
