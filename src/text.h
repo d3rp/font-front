@@ -69,9 +69,9 @@ struct Font
         // returns the font in the array at key+idx and how many are left in the array
         std::tuple<int, Font*> at(const hb_script_t key, int idx) const
         {
-            std::cout << "[tag: \"";
-            print_tag(key);
-            std::cout << "\" -> \"";
+            //            std::cout << "[tag: \"";
+            //            print_tag(key);
+            //            std::cout << "\" -> \"";
             assert(idx >= 0);
             auto it = _map.find(key);
             if (it == _map.end())
@@ -79,7 +79,7 @@ struct Font
                 auto fb = _map.find(_fallback_key);
                 assert(fb != _map.end()); // need to set a fallback font set
                 auto fb_idx = fb->second.start + fb->second.length - 1;
-                printf("\" ... returning fallback]\n");
+                //                printf("\" ... returning fallback]\n");
                 return { 0, db.at(fb_idx) };
             }
             auto m = it->second;
@@ -87,8 +87,8 @@ struct Font
             auto font_idx = m.start + idx;
             assert(font_idx < db.size());
 
-            print_tag(key);
-            std::cout << "\"]\n";
+            //            print_tag(key);
+            //            std::cout << "\"]\n";
 
             return { m.length - idx - 1, db.at(font_idx) };
         }
@@ -450,13 +450,13 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
     while (dir_run_idx < u32_str.length() && SBScriptLocatorMoveNext(script_loc))
     {
 
-        printf(" -- script offset: %d\n", script_info->offset);
+        //        printf(" -- script offset: %d\n", script_info->offset);
         while (script_info->offset > direction_runs[dir_run_idx].offset)
             ++dir_run_idx;
 
         {
             auto run_txt = u32_str.substr(script_info->offset, script_info->length);
-            std::cout << "Matching: \"" << utlz::utf32to8(run_txt) << "\" ";
+            //            std::cout << "Matching: \"" << utlz::utf32to8(run_txt) << "\" ";
         }
 
         auto buffer = hb_buffer_create();
@@ -482,21 +482,22 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
             unsigned int start;
             unsigned int length;
         };
+
         std::vector<FontRun> font_runs;
 
         int font_idx                     = 0;
         auto [fonts_remaining, font_ptr] = fonts.at(font_key, font_idx++);
         bool script_segment_resolved     = false;
-        bool fallback_tried = false;
+        bool fallback_tried              = false;
 
-        collect_runs:
+    collect_runs:
         do
         {
             run_start = script_info->offset;
             // search for starting point that is left unresolved
             while (run_start < script_end && mask.test(run_start))
                 ++run_start;
-            printf("font offset %d (remaining %d)\n", run_start, fonts_remaining);
+            //            printf("font offset %d (remaining %d)\n", run_start, fonts_remaining);
 
             run_end = run_start;
             // collect all runs fitting to this font
@@ -517,7 +518,7 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
                     ++run_end;
                 }
 
-                printf("[%d, %d]: %d\n", run_start, run_end, font_ptr->id);
+                //                printf("[%d, %d]: %d\n", run_start, run_end, font_ptr->id);
                 // collect the substr
                 font_runs.emplace_back(
                     FontRun { .font_ptr = font_ptr, .start = run_start, .length = (run_end - run_start) }
@@ -528,10 +529,10 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
             script_segment_resolved = true;
             for (int i = script_start; i < script_end; ++i)
             {
-                std::cout << mask[i];
+                //                std::cout << mask[i];
                 script_segment_resolved &= mask[i];
             }
-            std::cout << "\n";
+            //            std::cout << "\n";
 
             if (fonts_remaining > 0)
             {
@@ -545,9 +546,9 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
 
         if (!fallback_tried)
         {
-            font_key = fonts._fallback_key;
-            font_idx = 0;
-            fallback_tried = true;
+            font_key             = fonts._fallback_key;
+            font_idx             = 0;
+            fallback_tried       = true;
             auto [remaining, fp] = fonts.at(font_key, font_idx++);
             fonts_remaining      = remaining;
             font_ptr             = fp;
@@ -555,32 +556,32 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
             goto collect_runs;
         }
 
-//        while (!script_segment_resolved)
-//        {
-//            // search for starting point that is left unresolved
-//            run_start = script_start;
-//            while (run_start < script_end && mask.test(run_start))
-//                ++run_start;
-//            printf("font offset %d (remaining %d)\n", run_start, fonts_remaining);
-//
-//            // iterate end idx until there's no match while marking these chars as resolved
-//            run_end = run_start;
-//            while (run_end < script_end && !mask.test(run_end))
-//            {
-//                mask.set(run_end);
-//                ++run_end;
-//            }
-//
-//            // collect the substr
-//            font_runs.emplace_back(FontRun { .font_ptr = fonts.at(fonts._fallback_key),
-//                                             .start    = run_start,
-//                                             .length   = (run_end - run_start) });
-//            script_segment_resolved = true;
-//            for (int i = script_start; i < script_end; ++i)
-//                script_segment_resolved &= mask[i];
-//        }
+        //        while (!script_segment_resolved)
+        //        {
+        //            // search for starting point that is left unresolved
+        //            run_start = script_start;
+        //            while (run_start < script_end && mask.test(run_start))
+        //                ++run_start;
+        //            printf("font offset %d (remaining %d)\n", run_start, fonts_remaining);
+        //
+        //            // iterate end idx until there's no match while marking these chars as
+        //            resolved run_end = run_start; while (run_end < script_end &&
+        //            !mask.test(run_end))
+        //            {
+        //                mask.set(run_end);
+        //                ++run_end;
+        //            }
+        //
+        //            // collect the substr
+        //            font_runs.emplace_back(FontRun { .font_ptr = fonts.at(fonts._fallback_key),
+        //                                             .start    = run_start,
+        //                                             .length   = (run_end - run_start) });
+        //            script_segment_resolved = true;
+        //            for (int i = script_start; i < script_end; ++i)
+        //                script_segment_resolved &= mask[i];
+        //        }
 
-        std::cout << "mask: " << mask << "\n";
+        //        std::cout << "mask: " << mask << "\n";
 
 #if 0
         { // debugging

@@ -11,6 +11,66 @@
 #include "test_strings.h"
 std::function<void(GLFWwindow*)> draw;
 
+static struct State
+{
+    std::atomic<bool> lorem_ipsums = false;
+    std::atomic<bool> key_input = true;
+    std::atomic<bool> has_input_changed = true;
+
+    std::vector<std::string> input = {"test"};
+} state;
+
+void toggle(std::atomic_bool& b)
+{
+    b.exchange(!b);
+}
+void char_callback(GLFWwindow* window, unsigned int codepoint)
+{
+    std::u32string u32;
+    u32.push_back(codepoint);
+    auto utf8_str = utf8::utf32to8(u32);
+    state.input.at(0) += utf8_str;
+    state.has_input_changed = true;
+}
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    if (action == GLFW_PRESS) {
+        if (mods & GLFW_MOD_SUPER)
+        {
+            // quit
+            if (key == GLFW_KEY_Q && (mods & GLFW_MOD_SUPER))
+            {
+                glfwSetWindowShouldClose(window, GLFW_TRUE);
+            }
+
+            // lorem ipsum
+            if (key == GLFW_KEY_L && (mods & GLFW_MOD_SUPER))
+            {
+                toggle(state.lorem_ipsums);
+                toggle(state.key_input);
+            }
+
+            // Handle paste operation (Ctrl+V)
+            if (key == GLFW_KEY_V && (mods & GLFW_MOD_SUPER))
+            {
+                const char* clipboard_text = glfwGetClipboardString(window);
+                if (clipboard_text)
+                {
+                    std::cout << "Adding: " << clipboard_text << std::endl;
+                }
+                state.input.emplace_back(clipboard_text);
+                state.has_input_changed = true;
+            }
+        }
+
+//        if (key == GLFW_KEY_C && (mods & GLFW_MOD_SUPER)) {
+//            const char* text_to_paste = "Pasting text into clipboard!";
+//            glfwSetClipboardString(window, text_to_paste);
+//            std::cout << "Pasting text: " << text_to_paste << std::endl;
+//        }
+    }
+}
+
 int main()
 {
     glfwSetErrorCallback([](auto err, auto desc) { fprintf(stderr, "ERROR: %s\n", desc); });
@@ -65,6 +125,7 @@ int main()
     );
     glfwMakeContextCurrent(window);
 
+
     float content_scale = .0f;
     glfwGetWindowContentScale(window, nullptr, &content_scale);
 
@@ -111,7 +172,11 @@ int main()
     };
     auto font_latin = add_font(font_dir + "/NotoSans-Regular.ttf");
     on_scope_exit([&] { destroy_font(font_latin); });
+#if __APPLE__
     auto font_arial = add_font("/Library/Fonts/Arial Unicode.ttf");
+#else
+    auto font_arial = add_font("C:\\Windows\\Fonts\\segoeui.ttf");
+#endif
     on_scope_exit([&] { destroy_font(font_arial); });
     // arabic
     auto font_amiri = add_font(font_dir + "/amiri-regular.ttf");
@@ -147,6 +212,8 @@ int main()
     on_scope_exit([&] { destroy_font(font_maths); });
     auto font_emoji = add_font(font_dir + "/NotoEmoji-VariableFont_wght.ttf");
     on_scope_exit([&] { destroy_font(font_emoji); });
+    auto font_unifont = add_font(font_dir + "/unifont.ttf");
+    on_scope_exit([&] { destroy_font(font_unifont); });
 
     Text text_maths { test::adhoc::maths_cstr, "dflt", HB_SCRIPT_LATIN, HB_DIRECTION_LTR };
 
@@ -161,35 +228,39 @@ int main()
 
     Font::Map fonts;
     using V = std::vector<Font*>;
-    fonts.add(HB_SCRIPT_LATIN, V { &font_latin, &font_emoji, &font_maths });
-    fonts.add(HB_SCRIPT_GEORGIAN, V { &font_georgian });
-    fonts.add(HB_SCRIPT_HAN, V { &font_simple_chinese });
-    fonts.add(HB_SCRIPT_COMMON, V { &font_emoji, &font_maths });
-    fonts.add(HB_SCRIPT_ARABIC, V { &font_amiri });
-//        fonts.add(HB_SCRIPT_HEBREW, V { &font_sanskrit });
-    //    fonts.add(HB_SCRIPT_TAMIL, V { &font_sanskrit });
-    fonts.add(HB_SCRIPT_KATAKANA, V { &font_katakana });
-    fonts.add(HB_SCRIPT_HANGUL, V { &font_korean });
-    fonts.add(HB_SCRIPT_DEVANAGARI, V { &font_sanskrit });
-    fonts.add(HB_SCRIPT_MYANMAR, V { &font_myanmar });
-    fonts.add(HB_SCRIPT_THAI, V { &font_sarabun });
+    //        fonts.add(HB_SCRIPT_HEBREW, V { &font_sanskrit });
+    fonts.add(HB_SCRIPT_LATIN, V { &font_latin /*, &font_emoji, &font_maths*/ });
+    //        fonts.add(HB_SCRIPT_GEORGIAN, V { &font_georgian });
+    //    fonts.add(HB_SCRIPT_HAN, V { &font_simple_chinese });
     //    fonts.add(HB_SCRIPT_HAN, V { &font_han });
-    fonts.add(HB_SCRIPT_MATH, V { &font_maths });
-    fonts.set_fallback(V { &font_emoji, &font_maths, &font_arial });
+    //    fonts.add(HB_SCRIPT_COMMON, V { &font_emoji, &font_maths });
+    //        fonts.add(HB_SCRIPT_ARABIC, V { &font_amiri });
+    //    fonts.add(HB_SCRIPT_KATAKANA, V { &font_katakana });
+    //    fonts.add(HB_SCRIPT_HANGUL, V { &font_korean });
+    //    fonts.add(HB_SCRIPT_DEVANAGARI, V { &font_sanskrit });
+    //    fonts.add(HB_SCRIPT_MYANMAR, V { &font_myanmar });
+    //    fonts.add(HB_SCRIPT_THAI, V { &font_sarabun });
+    //    fonts.add(HB_SCRIPT_MATH, V { &font_maths });
+    fonts.set_fallback(V { &font_emoji,
+                           &font_maths,
+                           //        &font_amiri,
+                           //        &font_simple_chinese,
+                           //        &font_katakana,
+                           //        &font_korean,
+                           //        &font_myanmar,
+                           //        &font_sarabun,
+                           //        &font_sanskrit,
+                           //        &font_sarabun,
+
+
+                           &font_arial});
 
     auto all_test_strs = {
-        test::lorem::arabian,
-        test::lorem::hebrew,
-        test::lorem::armenian,
-        test::lorem::chinese,
-        test::lorem::japanese,
-        test::lorem::greek,
-        test::lorem::indian,
-        test::lorem::korean,
-        test::lorem::russian,
-        test::adhoc::emojis,
-        test::adhoc::mixed_cstr,
-        test::adhoc::maths_cstr,
+        test::lorem::arabian,   test::lorem::hebrew,     test::lorem::armenian,
+        test::lorem::chinese,   test::lorem::japanese,   test::lorem::greek,
+        test::lorem::indian,    test::lorem::korean,     test::lorem::russian,
+        test::adhoc::emojis,    test::adhoc::mixed_cstr, test::adhoc::maths_cstr,
+        test::adhoc::all_part1, test::adhoc::all_part2,  test::adhoc::all_part3,
     };
     std::vector<std::vector<RunItem>> all_runs;
     for (auto& test_str : all_test_strs)
@@ -200,7 +271,9 @@ int main()
     std::string s(test::adhoc::zalgo);
     auto zalgo_run = create_shaper_runs(s, fonts);
 
-//    auto runs = create_shaper_runs(test_str, fonts);
+    std::vector<std::vector<RunItem>> input_runs;
+//    for (auto& input_str : state.input)
+//        input_runs.emplace_back(create_shaper_runs(input_str, fonts));
 
     Point p { 0, 0 };
 
@@ -218,17 +291,52 @@ int main()
         rdr.begin(fb_w, fb_h);
         float x = 10.0f;
         float y = 30.0f;
-        for (auto& runs : all_runs)
+        if (state.lorem_ipsums)
         {
-            rdr.draw_runs<VertexDataFormat>(runs, { DP_X(x * content_scale), DP_Y(y * content_scale) }, colours::red);
-            y += 40.0f;
+            for (auto& runs : all_runs)
+            {
+                rdr.draw_runs<VertexDataFormat>(
+                    runs,
+                    { DP_X(x * content_scale), DP_Y(y * content_scale) },
+                    colours::red
+                );
+                y += 40.0f;
+            }
+            y = 400.0f;
+            x = 1800.0f;
+            rdr.draw_runs<VertexDataFormat>(
+                zalgo_run,
+                { DP_X(x * content_scale), DP_Y(y * content_scale) },
+                colours::blue
+            );
         }
-        y+=40.0f;
-        x+=400.0f;
-        rdr.draw_runs<VertexDataFormat>(zalgo_run, { DP_X(x * content_scale), DP_Y(y * content_scale) }, colours::blue);
+        if (state.key_input)
+        {
+            if (state.has_input_changed)
+            {
+                input_runs.clear();
+                for (auto& input_str : state.input)
+                {
+                    std::cout << input_str << "\n";
+                    input_runs.emplace_back(create_shaper_runs(input_str, fonts));
+                }
+                state.has_input_changed = false;
+            }
+            for (auto& runs : input_runs)
+            {
+                rdr.draw_runs<VertexDataFormat>(
+                    runs,
+                    { DP_X(x * content_scale), DP_Y(y * content_scale) },
+                    colours::black
+                );
+                y += 40.0f;
+            }
+        }
         rdr.end();
     };
 
+    glfwSetKeyCallback(window, key_callback);
+    glfwSetCharCallback(window, char_callback);
     // Event loop
     while (!glfwWindowShouldClose(window))
     {
