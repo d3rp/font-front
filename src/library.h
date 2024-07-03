@@ -28,7 +28,6 @@ struct Library
     }
 
     FT_Library get() const { return library; }
-
-    FT_Library library;
+    FT_Library library { nullptr };
 };
 } // namespace typesetting

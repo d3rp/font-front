@@ -2,7 +2,11 @@ cmake_minimum_required(VERSION 3.15)
 
 project(font_front)
 
-set(CMAKE_CXX_STANDARD 17)
+if (MSVC)
+    set(CMAKE_CXX_STANDARD 20)
+else ()
+    set(CMAKE_CXX_STANDARD 17)
+endif ()
 #set(CMAKE_CXX_FLAGS_DEBUG "-O1")
 
 add_subdirectory(src)
@@ -16,30 +20,43 @@ if (MSVC)
 endif ()
 
 # Verify that opengl is installed
-find_package( OpenGL REQUIRED )
+find_package(OpenGL REQUIRED)
 
 # Freetype 2
-find_package(Freetype REQUIRED)
-add_library(freetype ALIAS Freetype::Freetype)
+set(CMAKE_DISABLE_FIND_PACKAGE_ZLIB TRUE CACHE BOOL " " FORCE)
+set(CMAKE_DISABLE_FIND_PACKAGE_BZip2 TRUE CACHE BOOL " " FORCE)
+set(CMAKE_DISABLE_FIND_PACKAGE_PNG TRUE CACHE BOOL " " FORCE)
+set(CMAKE_DISABLE_FIND_PACKAGE_HarfBuzz TRUE CACHE BOOL " " FORCE)
+set(CMAKE_DISABLE_FIND_PACKAGE_BrotliDec TRUE CACHE BOOL " " FORCE)
+add_subdirectory(deps/freetype)
+#find_package(Freetype REQUIRED)
+#add_library(freetype ALIAS Freetype::Freetype)
 
 # utfcpp
+target_compile_definitions(${PROJECT_NAME} PUBLIC UTF_CPP_CPLUSPLUS=201703L)
 target_include_directories(${PROJECT_NAME} PUBLIC "deps/utfcpp")
 
 # Harfbuzz
+set(HB_BUILD_SUBSET OFF CACHE BOOL " " FORCE)
 add_subdirectory(deps/harfbuzz)
 
 # GLFW 3
-#find_package(glfw3 REQUIRED)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL " " FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL " " FORCE)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL " " FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL " " FORCE)
 add_subdirectory(deps/glfw)
+#find_package(glfw3 REQUIRED)
 
 # GLAD
 add_library(glad deps/glad/src/glad.c)
 target_link_libraries(glad PRIVATE ${OPENGL_LIBRARIES})
 #target_compile_definitions(glad PRIVATE GLAD_GL_IMPLEMENTATION=1)
-target_include_directories(glad PUBLIC "deps/glad/include" ${OPENGL_INCLUDE_DIRS} )
+target_include_directories(glad PUBLIC "deps/glad/include" ${OPENGL_INCLUDE_DIRS})
 
 # GLM
-find_package(glm REQUIRED)
+#find_package(glm REQUIRED)
+add_subdirectory(deps/glm)
 include_directories(deps/glm)
 
 # sheenbidi
@@ -65,7 +82,6 @@ list(APPEND sheenbidi_sources
         "${SBidi_SOURCE_DIR}/ScriptStack.c"
         "${SBidi_SOURCE_DIR}/StatusStack.c"
 )
-message(STATUS ${sheenbidi_sources})
 add_library(sheenbidi ${sheenbidi_sources})
 target_include_directories(sheenbidi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/sheenbidi/Headers)
 

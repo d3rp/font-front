@@ -9,6 +9,7 @@
 #include <future>
 #include <GLFW/glfw3.h>
 
+// For testing and benchmarking
 #define RENDER_ENABLED 1
 
 std::function<void(GLFWwindow*)> draw;
@@ -247,17 +248,6 @@ int main()
     on_scope_exit([&] { destroy_font(font_emoji); });
     auto font_unifont = add_font(font_dir + "/unifont.ttf");
     on_scope_exit([&] { destroy_font(font_unifont); });
-
-    Text text_maths { test::adhoc::maths_cstr, "dflt", HB_SCRIPT_LATIN, HB_DIRECTION_LTR };
-
-#if 0
-    Text text_latin { test::adhoc::latin_cstr, "en", HB_SCRIPT_LATIN, HB_DIRECTION_LTR };
-    Text text_arabic { test::adhoc::arabic_cstr, "ar", HB_SCRIPT_ARABIC, HB_DIRECTION_RTL };
-    Text text_arabic_undef { test::adhoc::arabic_cstr };
-    Text text_han        = { test::adhoc::han_cstr, "ch", HB_SCRIPT_HAN, HB_DIRECTION_TTB };
-    Text text_devanagari = { test::adhoc::devanagari_cstr, "hi", HB_SCRIPT_DEVANAGARI, HB_DIRECTION_LTR };
-    Text text_sth_else { test::adhoc::sth_cstr, "en", HB_SCRIPT_INHERITED, HB_DIRECTION_INVALID };
-#endif
 
     Font::Map fonts;
     using V = std::vector<Font*>;

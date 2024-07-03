@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <utility>
 #include <thread>
+#include <bitset>
 
 extern "C"
 {

@@ -56,52 +56,6 @@ struct VertexDataFormat
     base_t data[spec::vertex_data::triangle_points_n][spec::vertex_data::pos_points_n];
 };
 
-#if 0 // maybe a variant for ShaperRun
-// Wrapper for text to pass for Text Renderer
-template <typename VertexDataType>
-struct RenderableText
-{
-    explicit RenderableText(const Text& text_ref, const Font& font_ref, const Colour c = colours::red)
-        : text(text_ref)
-        , font(font_ref)
-        , dirty(true)
-        , colour(c)
-    {
-    }
-
-    void update()
-    {
-        if (!dirty)
-            return;
-
-        glyph_infos.clear();
-        // TODO: can we init-allocate this..
-        //        auto* buffer = hb_buffer_create();
-        //        on_scope_exit([&buffer] { hb_buffer_destroy(buffer); });
-
-        auto [hb_infos, hb_poss, n] { shaper.shape(text, font) };
-        for (uint i = 0; i < n; ++i)
-            glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
-                { hb_infos[i].codepoint,
-                  hb_poss[i].x_offset / 64,
-                  hb_poss[i].y_offset / 64,
-                  hb_poss[i].x_advance / 64,
-                  hb_poss[i].y_advance / 64 }
-            ));
-
-        dirty = false;
-    }
-
-    hb_helpers::Shaper shaper;
-    std::vector<hb_helpers::GlyphInfo> glyph_infos;
-    const Text& text;
-    const Font& font;
-    Colour colour;
-
-    mutable bool dirty = true;
-};
-#endif
-
 using GlyphKey = std::pair<unsigned int, unsigned int>;
 
 struct Glyph
@@ -455,7 +409,7 @@ struct TextRenderer : GlRenderer
             static std::vector<hb_helpers::GlyphInfo> glyph_infos;
             glyph_infos.clear();
 
-            for (uint i = 0; i < run.hb_info.size(); ++i)
+            for (int i = 0; i < run.hb_info.size(); ++i)
                 // Freetype: The advance vector is expressed in 1/64 of pixels, and is truncated
                 // to integer pixels on each iteration.
                 glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
