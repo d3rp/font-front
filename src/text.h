@@ -491,7 +491,9 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
         return {};
 
     // TODO: create a iterator by chunks of 256 or sth
-    constexpr int mask_length = 512;
+    // Note this relates to 8-bit characters, but we're dealing with unicode, so there's an
+    // upper bound of 4x8-bits for each unicode character/codepoint
+    constexpr int mask_length = 1024;
     assert(u32_str.length() < mask_length);
     std::bitset<mask_length> mask;
 

@@ -17,7 +17,7 @@ add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 target_compile_definitions(${PROJECT_NAME} PRIVATE FONTS_DIR="${PROJECT_SOURCE_DIR}/fonts")
 # https://docs.microsoft.com/en-us/cpp/build/reference/utf-8-set-source-and-executable-character-sets-to-utf-8?view=msvc-160
 if (MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE /source-charset:utf-8)
+    target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
 endif ()
 
 # Verify that opengl is installed

@@ -272,4 +272,28 @@ std::string format_with_space(long long number)
     return ss.str();
 }
 
+// wrap a function into a
+template <typename Unit>
+auto time_in_ = [](std::string label, auto func, auto&... args)
+{
+    using Clock           = std::chrono::high_resolution_clock;
+    const auto then             = Clock::now();
+    auto result           = func(args...);
+    const auto elapsed          = Clock::now() - then;
+    const auto elapsed_in_units = std::chrono::duration_cast<Unit>(elapsed);
+
+    const auto metric_unit = [](const auto value) {
+        return value < 1'000'000L ? "ms" : value < 1'000'000'000L ? "µs" : "ns";
+    };
+    std::cout << std::setw(12) << label << ": " << std::setw(12)
+              << utlz::format_with_space((elapsed_in_units).count()) << " "
+              << metric_unit(typename Unit::period().den) << "\n";
+
+    return std::move(result);
+};
+auto time_in_s    = time_in_<std::chrono::seconds>;
+auto time_in_ms   = time_in_<std::chrono::milliseconds>;
+auto time_in_mcrs = time_in_<std::chrono::microseconds>;
+auto time_in_ns   = time_in_<std::chrono::nanoseconds>;
+
 } // namespace utlz

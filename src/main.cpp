@@ -120,17 +120,7 @@ int main()
         }
     };
 
-    auto timed = [](std::string label, auto func, auto&... args)
-    {
-        auto then       = std::chrono::steady_clock::now();
-        auto result     = func(args...);
-        auto elapsed    = std::chrono::steady_clock::now() - then;
-        auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed);
-        std::cout << std::setw(12) << label << ": " << std::setw(12)
-                  << utlz::format_with_space((elapsed_ns).count()) << " ns\n";
 
-        return std::move(result);
-    };
 #if RENDER_ENABLED
     // GLFW
     may_fail(glfwInit, "glfw init failed");
@@ -323,7 +313,7 @@ int main()
     for (auto& test_str : all_test_strs)
     {
         std::string s(test_str);
-        all_runs.emplace_back(timed("lorems", create_shaper_runs, s, fonts));
+        all_runs.emplace_back(utlz::time_in_mcrs("lorems", create_shaper_runs, s, fonts));
     }
 #else
     timed(
@@ -357,7 +347,7 @@ int main()
 #endif
     std::string s(test::adhoc::zalgo);
 
-    auto zalgo_run = timed("zalgo", create_shaper_runs, s, fonts);
+    auto zalgo_run = utlz::time_in_mcrs("zalgo", create_shaper_runs, s, fonts);
 
     std::vector<std::vector<RunItem>> input_runs;
     //    for (auto& input_str : state.input)
