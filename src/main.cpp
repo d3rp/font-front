@@ -223,7 +223,7 @@ int main()
 #if __APPLE__
     auto font_fallback = add_font("/Library/Fonts/Arial Unicode.ttf");
 #else
-    auto font_arial = add_font("C:\\Windows\\Fonts\\segoeui.ttf");
+    auto font_fallback = add_font("C:\\Windows\\Fonts\\segoeui.ttf");
 #endif
     on_scope_exit([&] { destroy_font(font_fallback); });
 
