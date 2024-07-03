@@ -39,46 +39,6 @@ namespace utlz
 
 using namespace utf8;
 
-template <typename T>
-class Iterator
-{
-public:
-    using iterator_category = std::forward_iterator_tag;
-    using difference_type   = std::ptrdiff_t;
-    using value_type        = T;
-    using pointer           = T*; // or also value_type*
-    using reference         = T&; // or also value_type&
-
-    Iterator(pointer ptr)
-        : m_ptr(ptr)
-    {
-    }
-
-    reference operator*() const { return *m_ptr; }
-
-    pointer operator->() { return m_ptr; }
-
-    Iterator& operator++()
-    {
-        m_ptr++;
-        return *this;
-    }
-
-    Iterator operator++(int)
-    {
-        Iterator tmp = *this;
-        ++(*this);
-        return tmp;
-    }
-
-    friend bool operator==(const Iterator& a, const Iterator& b) { return a.m_ptr == b.m_ptr; }
-
-    friend bool operator!=(const Iterator& a, const Iterator& b) { return a.m_ptr != b.m_ptr; }
-
-private:
-    pointer m_ptr;
-};
-
 float to_float(FT_F26Dot6 weird_number) { return float(weird_number) * 1.0f / 64.0f; }
 
 FT_F26Dot6 to_ft_float(float value) { return FT_F26Dot6(value * 64.0f); }
@@ -126,112 +86,6 @@ static void print_versions(typesetting::Library& library)
     printf("HarfBuzz version: %s\n", hb_version_string());
 }
 
-#if 0
-// gpt4 pitkästä tavarasta
-std::string utf32_to_utf8(const char32_t* utf32, size_t n)
-{
-    std::string utf8;
-    utf8.reserve(n * 4); // Reserve space to avoid multiple allocations.
-
-    for (size_t i = 0; i < n; ++i)
-    {
-        char32_t ch = utf32[i];
-
-        if (ch <= 0x7F)
-        {
-            // 1-byte sequence: 0xxxxxxx
-            utf8.push_back(static_cast<char>(ch));
-        }
-        else if (ch <= 0x7FF)
-        {
-            // 2-byte sequence: 110xxxxx 10xxxxxx
-            utf8.push_back(static_cast<char>(0xC0 | ((ch >> 6) & 0x1F)));
-            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-        }
-        else if (ch <= 0xFFFF)
-        {
-            // 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx
-            utf8.push_back(static_cast<char>(0xE0 | ((ch >> 12) & 0x0F)));
-            utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
-            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-        }
-        else if (ch <= 0x10FFFF)
-        {
-            // 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-            utf8.push_back(static_cast<char>(0xF0 | ((ch >> 18) & 0x07)));
-            utf8.push_back(static_cast<char>(0x80 | ((ch >> 12) & 0x3F)));
-            utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
-            utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-        }
-        else
-        {
-            // Invalid UTF-32 character, handle error
-            // For now, we'll just skip invalid characters
-        }
-    }
-
-    return utf8;
-}
-
-// Helper function to convert UTF-8 to UTF-32
-std::u32string utf8_to_utf32(const std::string& utf8)
-{
-    constexpr auto invalid_default = []() -> std::u32string { return {}; };
-
-    std::u32string utf32;
-    char32_t ch = 0;
-    int bytes   = 0;
-
-    for (unsigned char c : utf8)
-    {
-        if (bytes == 0)
-        {
-            if ((c & 0x80) == 0)
-            {
-                ch    = c;
-                bytes = 1;
-            }
-            else if ((c & 0xE0) == 0xC0)
-            {
-                ch    = c & 0x1F;
-                bytes = 2;
-            }
-            else if ((c & 0xF0) == 0xE0)
-            {
-                ch    = c & 0x0F;
-                bytes = 3;
-            }
-            else if ((c & 0xF8) == 0xF0)
-            {
-                ch    = c & 0x07;
-                bytes = 4;
-            }
-            else
-                return invalid_default();
-        }
-        else
-        {
-            if ((c & 0xC0) != 0x80)
-                return invalid_default();
-
-            ch = (ch << 6) | (c & 0x3F);
-            --bytes;
-        }
-        if (bytes == 1)
-        {
-            utf32.push_back(ch);
-            ch    = 0;
-            bytes = 0;
-        }
-    }
-
-    if (bytes != 0)
-        return invalid_default();
-
-    return utf32;
-}
-#endif
-
 // Function to check if a character is supported by the font
 inline bool is_char_supported(FT_Face& face, char32_t character)
 {
@@ -254,25 +108,23 @@ bool are_all_chars_supported(FT_Face& ftFace, std::string& u8_buffer)
     return true;
 }
 
-// Custom numpunct facet to use space as thousands separator
-class space_separated : public std::numpunct<char>
-{
-protected:
-    virtual char do_thousands_sep() const override { return ' '; }
-
-    virtual std::string do_grouping() const override { return "\3"; }
-};
-
 // Function to format an integer with space as thousands separator
 std::string format_with_space(long long number)
 {
+    // Custom numpunct facet to use space as thousands separator
+    struct SpaceSep : std::numpunct<char>
+    {
+        char do_thousands_sep() const override { return ' '; }
+        std::string do_grouping() const override { return "\3"; }
+    };
+
     std::stringstream ss;
-    ss.imbue(std::locale(std::locale::classic(), new space_separated));
+    ss.imbue(std::locale(std::locale::classic(), new SpaceSep));
     ss << number;
     return ss.str();
 }
 
-// wrap a function into a
+// wrap a function into a timed context
 template <typename Unit>
 auto time_in_ = [](std::string label, auto func, auto&... args)
 {

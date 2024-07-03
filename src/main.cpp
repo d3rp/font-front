@@ -347,7 +347,7 @@ test::adhoc::all_part3,*/
                 rdr.draw_runs<VertexDataFormat>(
                     runs,
                     { DP_X(x * content_scale), DP_Y(y * content_scale) },
-                    colours::red
+                    colours::black
                 );
                 y += 40.0f;
             }
