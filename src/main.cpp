@@ -9,6 +9,10 @@
 #include <future>
 #include <GLFW/glfw3.h>
 
+#include "fontbin/notosans_regular.h"
+#include "fontbin/notosans_emoji.h"
+#include "fontbin/notosans_math.h"
+
 // For testing and benchmarking
 #define RENDER_ENABLED 1
 
@@ -143,7 +147,7 @@ int main()
     // https://www.glfw.org/docs/3.3/window_guide.html#GLFW_SCALE_TO_MONITOR
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 
-    auto* window = glfwCreateWindow(spec::gui::w, spec::gui::h, "foobar", nullptr, nullptr);
+    auto* window = glfwCreateWindow(spec::gui::w, spec::gui::h, "font-front", nullptr, nullptr);
     check_failed(window, "Create window failed");
 
     glfwSetWindowRefreshCallback(
@@ -191,6 +195,18 @@ int main()
 
     const std::string font_dir = FONTS_DIR;
 
+    auto add_font_bin = [&library, content_scale](const unsigned char* font_bin, const unsigned int bin_size, int font_size = 32)
+    {
+        Font font;
+
+        auto _ = create_font_bin(&library, font_bin, bin_size, font_size, content_scale);
+        if (_)
+            font = _.value();
+        else
+            throw std::runtime_error("font failed");
+        return font;
+    };
+
     auto add_font = [&library, content_scale](const std::string font_path, int font_size = 32)
     {
         Font font;
@@ -204,14 +220,28 @@ int main()
             throw std::runtime_error("font failed");
         return font;
     };
-    auto font_latin = add_font(font_dir + "/NotoSans-Regular.ttf");
+
+    auto font_latin = add_font_bin(fonts_NotoSans_Regular_ttf, fonts_NotoSans_Regular_ttf_len);
     on_scope_exit([&] { destroy_font(font_latin); });
+
+    auto font_emoji = add_font_bin(fonts_NotoEmoji_VariableFont_wght_ttf, fonts_NotoEmoji_VariableFont_wght_ttf_len);
+    on_scope_exit([&] { destroy_font(font_emoji); });
+
+    auto font_maths = add_font_bin(fonts_NotoSansMath_Regular_ttf, fonts_NotoSansMath_Regular_ttf_len);
+    on_scope_exit([&] { destroy_font(font_maths); });
+
 #if __APPLE__
-    auto font_arial = add_font("/Library/Fonts/Arial Unicode.ttf");
+    auto font_fallback = add_font("/Library/Fonts/Arial Unicode.ttf");
 #else
     auto font_arial = add_font("C:\\Windows\\Fonts\\segoeui.ttf");
 #endif
-    on_scope_exit([&] { destroy_font(font_arial); });
+    on_scope_exit([&] { destroy_font(font_fallback); });
+
+#if 0
+
+    auto font_latin = add_font(font_dir + "/NotoSans-Regular.ttf");
+    on_scope_exit([&] { destroy_font(font_latin); });
+
     // arabic
     auto font_amiri = add_font(font_dir + "/amiri-regular.ttf");
     on_scope_exit([&] { destroy_font(font_amiri); });
@@ -248,6 +278,7 @@ int main()
     on_scope_exit([&] { destroy_font(font_emoji); });
     auto font_unifont = add_font(font_dir + "/unifont.ttf");
     on_scope_exit([&] { destroy_font(font_unifont); });
+#endif
 
     Font::Map fonts;
     using V = std::vector<Font*>;
@@ -259,12 +290,12 @@ int main()
     //    fonts.add(HB_SCRIPT_HAN, V { &font_simple_chinese });
     //    fonts.add(HB_SCRIPT_HAN, V { &font_han });
     //    fonts.add(HB_SCRIPT_COMMON, V { &font_emoji, &font_maths });
-    fonts.add(HB_SCRIPT_ARABIC, V { &font_amiri });
+//    fonts.add(HB_SCRIPT_ARABIC, V { &font_amiri });
     //    fonts.add(HB_SCRIPT_KATAKANA, V { &font_katakana });
     //    fonts.add(HB_SCRIPT_HANGUL, V { &font_korean });
     //    fonts.add(HB_SCRIPT_DEVANAGARI, V { &font_sanskrit });
     //    fonts.add(HB_SCRIPT_MYANMAR, V { &font_myanmar });
-    fonts.add(HB_SCRIPT_THAI, V { &font_sarabun });
+//    fonts.add(HB_SCRIPT_THAI, V { &font_sarabun });
     //    fonts.add(HB_SCRIPT_MATH, V { &font_maths });
     fonts.set_fallback(V { &font_emoji,
                            &font_maths,
@@ -276,7 +307,7 @@ int main()
                            //        &font_sarabun,
                            //        &font_sanskrit,
                            //        &font_sarabun,
-                           &font_arial });
+                           &font_fallback });
 
     auto all_test_strs = {
         test::lorem::arabian,    test::lorem::hebrew,   test::lorem::armenian, test::lorem::chinese,
@@ -292,7 +323,7 @@ int main()
     for (auto& test_str : all_test_strs)
     {
         std::string s(test_str);
-        all_runs.emplace_back(timed("create shaper runs", create_shaper_runs, s, fonts));
+        all_runs.emplace_back(timed("lorems", create_shaper_runs, s, fonts));
     }
 #else
     timed(

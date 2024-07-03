@@ -119,6 +119,55 @@ unsigned int gen_id()
     return id++;
 }
 
+std::optional<Font>
+create_font_bin(Library* resources, const unsigned char* font_bin, const unsigned int bin_size, const int font_size, const float content_scale)
+{
+    static int next_id = 0;
+    Font font;
+
+    if (FT_New_Memory_Face(resources->library, font_bin, FT_Long(bin_size), 0, &font.face))
+        return std::nullopt;
+
+    auto face_scope_dtor = scope_guards::on_scope_exit_(
+        [&]
+        {
+            FT_Done_Face(font.face);
+            font.face = nullptr;
+        }
+    );
+
+#if defined(_WIN32)
+    const int logic_dpi_x = 96;
+    const int logic_dpi_y = 96;
+#elif defined(__APPLE__)
+    const int logic_dpi_x = 72;
+    const int logic_dpi_y = 72;
+#else
+    #error "not implemented"
+#endif
+
+    FT_Set_Char_Size(
+        font.face,
+        0,                                            // same as character height
+        utlz::to_ft_float(font_size * content_scale), // char_height in 1/64th of points
+        logic_dpi_x,                                  // horizontal device resolution
+        logic_dpi_y                                   // vertical device resolution
+    );
+
+    //    FT_Set_Char_Size(face, 0, 1000, 0, 0);
+    //    hb_font_t *font = hb_ft_font_create(face);
+    font.unicode = hb_ft_font_create_referenced(font.face);
+    hb_ft_font_set_funcs(font.unicode);
+
+    face_scope_dtor.dismiss();
+
+    font.id            = gen_id();
+    font.font_size     = font_size;
+    font.content_scale = content_scale;
+    // TODO: bold and italics..
+    return { font };
+}
+
 // Set font_size and content_scale before calling
 std::optional<Font>
 create_font(Library* resources, const char* font_file, const int font_size, const float content_scale)
