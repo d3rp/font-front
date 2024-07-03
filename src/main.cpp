@@ -75,10 +75,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             if (key == GLFW_KEY_V)
             {
                 const char* clipboard_text = glfwGetClipboardString(window);
-                if (clipboard_text)
-                {
-                    std::cout << "Adding: " << clipboard_text << std::endl;
-                }
                 state.input.emplace_back(clipboard_text);
                 state.has_input_changed = true;
             }
@@ -107,19 +103,6 @@ int main()
     };
     auto may_fail = [&check_failed](auto& func, auto fail_msg, auto&... args)
     { check_failed(func(args...), fail_msg); };
-
-    auto unwrap_opt = [&](auto& func, auto fail_msg, auto... args)
-    {
-        try
-        {
-            return func(args...).value();
-        }
-        catch (const std::bad_optional_access& e)
-        {
-            throw std::runtime_error(fail_msg);
-        }
-    };
-
 
 #if RENDER_ENABLED
     // GLFW
@@ -158,12 +141,7 @@ int main()
     may_fail(gladLoadGLLoader, "setting loader for glad failed", proc_address);
 #endif
     using namespace typesetting;
-    // Typesetting
-    // ├─Fonts
-    // ├─Glyph
-    // ├─Atlas
-    // ├─Library
-    // └─Handling
+
     Library library;
     {
         bool status = library.init();
@@ -185,7 +163,9 @@ int main()
 
     const std::string font_dir = FONTS_DIR;
 
-    auto add_font_bin = [&library, content_scale](const unsigned char* font_bin, const unsigned int bin_size, int font_size = 32)
+    auto add_font_bin =
+        [&library,
+         content_scale](const unsigned char* font_bin, const unsigned int bin_size, int font_size = 32)
     {
         Font font;
 
@@ -228,10 +208,8 @@ int main()
     on_scope_exit([&] { destroy_font(font_fallback); });
 
 #if 0
-
     auto font_latin = add_font(font_dir + "/NotoSans-Regular.ttf");
     on_scope_exit([&] { destroy_font(font_latin); });
-
     // arabic
     auto font_amiri = add_font(font_dir + "/amiri-regular.ttf");
     on_scope_exit([&] { destroy_font(font_amiri); });
@@ -253,7 +231,6 @@ int main()
     on_scope_exit([&] { destroy_font(font_georgian); });
     auto font_myanmar = add_font(font_dir + "/NotoSansMyanmar-Thin.ttf");
     on_scope_exit([&] { destroy_font(font_myanmar); });
-
     // ideograms
     auto font_simple_chinese = add_font(font_dir + "/NotoSansSC-VariableFont_wght.ttf");
     on_scope_exit([&] { destroy_font(font_simple_chinese); });
@@ -272,51 +249,49 @@ int main()
 
     Font::Map fonts;
     using V = std::vector<Font*>;
+
+#if 0 // local testing with different variations
     // Works worse than arial somehow..
     //    fonts.add(HB_SCRIPT_HEBREW, V { &font_sanskrit });
-    fonts.add(HB_SCRIPT_LATIN, V { &font_latin /*, &font_emoji, &font_maths*/ });
     // arial font (on macos) handles most of these
     //    fonts.add(HB_SCRIPT_GEORGIAN, V { &font_georgian });
     //    fonts.add(HB_SCRIPT_HAN, V { &font_simple_chinese });
     //    fonts.add(HB_SCRIPT_HAN, V { &font_han });
     //    fonts.add(HB_SCRIPT_COMMON, V { &font_emoji, &font_maths });
-//    fonts.add(HB_SCRIPT_ARABIC, V { &font_amiri });
+    //    fonts.add(HB_SCRIPT_ARABIC, V { &font_amiri });
     //    fonts.add(HB_SCRIPT_KATAKANA, V { &font_katakana });
     //    fonts.add(HB_SCRIPT_HANGUL, V { &font_korean });
     //    fonts.add(HB_SCRIPT_DEVANAGARI, V { &font_sanskrit });
     //    fonts.add(HB_SCRIPT_MYANMAR, V { &font_myanmar });
-//    fonts.add(HB_SCRIPT_THAI, V { &font_sarabun });
+    //    fonts.add(HB_SCRIPT_THAI, V { &font_sarabun });
     //    fonts.add(HB_SCRIPT_MATH, V { &font_maths });
-    fonts.set_fallback(V { &font_emoji,
-                           &font_maths,
-                           //        &font_amiri,
-                           //        &font_simple_chinese,
-                           //        &font_katakana,
-                           //        &font_korean,
-                           //        &font_myanmar,
-                           //        &font_sarabun,
-                           //        &font_sanskrit,
-                           //        &font_sarabun,
-                           &font_fallback });
+#endif
 
+    fonts.add(HB_SCRIPT_LATIN, V { &font_latin });
+    fonts.set_fallback(V { &font_emoji, &font_maths, &font_fallback });
+
+    using P            = std::pair<const char*, const char*>;
     auto all_test_strs = {
-        test::lorem::arabian,    test::lorem::hebrew,   test::lorem::armenian, test::lorem::chinese,
-        test::lorem::japanese,   test::lorem::greek,    test::lorem::indian,   test::lorem::korean,
-        test::lorem::russian,    test::lorem::thai,     test::adhoc::emojis,   test::adhoc::mixed_cstr,
-
-        test::adhoc::maths_cstr, test::adhoc::all_part1 /*, test::adhoc::all_part2,
-        test::adhoc::all_part3,*/
+        P { "latin", test::lorem::latin },     P { "arabian", test::lorem::arabian },
+        P { "hebrew", test::lorem::hebrew },   P { "armen", test::lorem::armenian },
+        P { "chinese", test::lorem::chinese }, P { "jp", test::lorem::japanese },
+        P { "greek", test::lorem::greek },     P { "indian", test::lorem::indian },
+        P { "korean", test::lorem::korean },   P { "rus", test::lorem::russian },
+        P { "thai", test::lorem::thai },       P { "emoji", test::adhoc::emojis },
+        P { "mix", test::adhoc::mixed_cstr },  P { "maths", test::adhoc::maths_cstr },
+        P { "all1", test::adhoc::all_part1 } /*, test::adhoc::all_part2,
+test::adhoc::all_part3,*/
     };
     std::vector<std::vector<RunItem>> all_runs;
 
 #if RENDER_ENABLED
     for (auto& test_str : all_test_strs)
     {
-        std::string s(test_str);
-        all_runs.emplace_back(utlz::time_in_mcrs("lorems", create_shaper_runs, s, fonts));
+        std::string s(test_str.second);
+        all_runs.emplace_back(utlz::time_in_mcrs(test_str.first, create_shaper_runs, s, fonts));
     }
 #else
-    timed(
+    time_in_mcrs(
         "all_runs",
         [&]
         {
@@ -346,12 +321,9 @@ int main()
     );
 #endif
     std::string s(test::adhoc::zalgo);
-
     auto zalgo_run = utlz::time_in_mcrs("zalgo", create_shaper_runs, s, fonts);
 
     std::vector<std::vector<RunItem>> input_runs;
-    //    for (auto& input_str : state.input)
-    //        input_runs.emplace_back(create_shaper_runs(input_str, fonts));
 
     Point p { 0, 0 };
     draw = [&](GLFWwindow* window)
@@ -398,10 +370,8 @@ int main()
             {
                 input_runs.clear();
                 for (auto& input_str : state.input)
-                {
-                    std::cout << input_str << "\n";
-                    input_runs.emplace_back(create_shaper_runs(input_str, fonts));
-                }
+                    input_runs.emplace_back(utlz::time_in_mcrs("key input", create_shaper_runs, input_str, fonts));
+
                 state.has_input_changed = false;
             }
             for (auto& runs : input_runs)
@@ -417,9 +387,11 @@ int main()
         rdr.end();
     };
 
+    // Input event hooks
     glfwSetKeyCallback(window, key_callback);
     glfwSetCharCallback(window, char_callback);
     glfwSetScrollCallback(window, scroll_callback);
+
     // Event loop
     while (!glfwWindowShouldClose(window))
     {

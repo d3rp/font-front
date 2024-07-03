@@ -6,7 +6,7 @@ if (MSVC)
     set(CMAKE_CXX_STANDARD 20)
 else ()
     set(CMAKE_CXX_STANDARD 17)
-    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64")
+    set(CMAKE_OSX_ARCHITECTURES "arm64")
 endif ()
 #set(CMAKE_CXX_FLAGS_DEBUG "-O1")
 

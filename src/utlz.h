@@ -285,7 +285,7 @@ auto time_in_ = [](std::string label, auto func, auto&... args)
     const auto metric_unit = [](const auto value) {
         return value < 1'000'000L ? "ms" : value < 1'000'000'000L ? "µs" : "ns";
     };
-    std::cout << std::setw(12) << label << ": " << std::setw(12)
+    std::cout << std::setw(12) << label << ": " << std::setw(8)
               << utlz::format_with_space((elapsed_in_units).count()) << " "
               << metric_unit(typename Unit::period().den) << "\n";
 
