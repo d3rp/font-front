@@ -1,7 +1,13 @@
 #pragma once
 
+#include <iostream>
+#include <locale>
+#include <sstream>
 #include <cuchar>
 #include <utf8.h>
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
 
 #define LOG_FUNC std::cout << __PRETTY_FUNCTION__ << "\n";
 
@@ -248,5 +254,22 @@ bool are_all_chars_supported(FT_Face& ftFace, std::string& u8_buffer)
     return true;
 }
 
+// Custom numpunct facet to use space as thousands separator
+class space_separated : public std::numpunct<char>
+{
+protected:
+    virtual char do_thousands_sep() const override { return ' '; }
+
+    virtual std::string do_grouping() const override { return "\3"; }
+};
+
+// Function to format an integer with space as thousands separator
+std::string format_with_space(long long number)
+{
+    std::stringstream ss;
+    ss.imbue(std::locale(std::locale::classic(), new space_separated));
+    ss << number;
+    return ss.str();
+}
 
 } // namespace utlz

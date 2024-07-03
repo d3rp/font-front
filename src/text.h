@@ -5,6 +5,7 @@
 #include <hb-ft.h>
 #include <initializer_list>
 #include <utility>
+#include <thread>
 
 extern "C"
 {
@@ -436,6 +437,8 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
 
     // specs container when calling move next
     const SBScriptAgent* script_info = SBScriptLocatorGetAgent(script_loc);
+    if (!script_info)
+        return {};
 
     // TODO: create a iterator by chunks of 256 or sth
     constexpr int mask_length = 512;
@@ -447,11 +450,12 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
     // Script runs are assumed to be more granular and coincide with direction runs, thus
     // we'll merge the to into basically script runs with the appropriate specs such as direction
     int dir_run_idx = 0;
-    while (dir_run_idx < u32_str.length() && SBScriptLocatorMoveNext(script_loc))
+    const auto max_length = std::min((size_t)mask_length, u32_str.length());
+    while (dir_run_idx < max_length && SBScriptLocatorMoveNext(script_loc))
     {
 
         //        printf(" -- script offset: %d\n", script_info->offset);
-        while (script_info->offset > direction_runs[dir_run_idx].offset)
+        while (dir_run_idx < max_length && script_info->offset > direction_runs[dir_run_idx].offset)
             ++dir_run_idx;
 
         {

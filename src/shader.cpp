@@ -2,6 +2,7 @@
 #include <cassert>
 #include "scope_guards.h"
 
+
 ShaderProgram::ShaderProgram()
     : program_(0)
 {

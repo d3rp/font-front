@@ -3,16 +3,20 @@ cmake_minimum_required(VERSION 3.15)
 project(font_front)
 
 set(CMAKE_CXX_STANDARD 17)
+#set(CMAKE_CXX_FLAGS_DEBUG "-O1")
 
 add_subdirectory(src)
+
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE FONTS_DIR="${PROJECT_SOURCE_DIR}/fonts")
-
 # https://docs.microsoft.com/en-us/cpp/build/reference/utf-8-set-source-and-executable-character-sets-to-utf-8?view=msvc-160
 if (MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /source-charset:utf-8)
 endif ()
+
+# Verify that opengl is installed
+find_package( OpenGL REQUIRED )
 
 # Freetype 2
 find_package(Freetype REQUIRED)
@@ -25,15 +29,18 @@ target_include_directories(${PROJECT_NAME} PUBLIC "deps/utfcpp")
 add_subdirectory(deps/harfbuzz)
 
 # GLFW 3
-find_package(glfw3 REQUIRED)
+#find_package(glfw3 REQUIRED)
+add_subdirectory(deps/glfw)
 
 # GLAD
 add_library(glad deps/glad/src/glad.c)
-target_compile_definitions(glad PUBLIC GLAD_GL_IMPLEMENTATION=1)
-target_include_directories(glad PUBLIC "deps/glad/include")
+target_link_libraries(glad PRIVATE ${OPENGL_LIBRARIES})
+#target_compile_definitions(glad PRIVATE GLAD_GL_IMPLEMENTATION=1)
+target_include_directories(glad PUBLIC "deps/glad/include" ${OPENGL_INCLUDE_DIRS} )
 
 # GLM
 find_package(glm REQUIRED)
+include_directories(deps/glm)
 
 # sheenbidi
 set(SBidi_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/sheenbidi/Source")

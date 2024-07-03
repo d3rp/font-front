@@ -2,13 +2,15 @@
 #include <functional>
 #include <filesystem>
 
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-
 #include "scope_guards.h"
 #include "text.h"
 #include "rendering.h"
 #include "test_strings.h"
+#include <future>
+#include <GLFW/glfw3.h>
+
+#define RENDER_ENABLED 1
+
 std::function<void(GLFWwindow*)> draw;
 
 static struct State
@@ -87,7 +89,9 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 
 int main()
 {
+#if RENDER_ENABLED
     glfwSetErrorCallback([](auto err, auto desc) { fprintf(stderr, "ERROR: %s\n", desc); });
+#endif
     auto check_failed = [](bool status, auto fail_msg)
     {
         if (!status)
@@ -96,7 +100,7 @@ int main()
             exit(1);
         }
     };
-    auto may_fail = [&](auto& func, auto fail_msg, auto&... args)
+    auto may_fail = [&check_failed](auto& func, auto fail_msg, auto&... args)
     { check_failed(func(args...), fail_msg); };
 
     auto unwrap_opt = [&](auto& func, auto fail_msg, auto... args)
@@ -111,6 +115,18 @@ int main()
         }
     };
 
+    auto timed = [](std::string label, auto func, auto&... args)
+    {
+        auto then       = std::chrono::steady_clock::now();
+        auto result     = func(args...);
+        auto elapsed    = std::chrono::steady_clock::now() - then;
+        auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed);
+        std::cout << std::setw(12) << label << ": " << std::setw(12)
+                  << utlz::format_with_space((elapsed_ns).count()) << " ns\n";
+
+        return std::move(result);
+    };
+#if RENDER_ENABLED
     // GLFW
     may_fail(glfwInit, "glfw init failed");
     on_scope_exit(glfwTerminate);
@@ -120,9 +136,9 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     // https://www.glfw.org/faq.html#41---how-do-i-create-an-opengl-30-context
-#ifdef __APPLE__
+    #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
+    #endif
     // https://www.glfw.org/docs/3.3/window_guide.html#GLFW_SCALE_TO_MONITOR
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 
@@ -145,7 +161,7 @@ int main()
     // Glad
     auto proc_address = (GLADloadproc) glfwGetProcAddress;
     may_fail(gladLoadGLLoader, "setting loader for glad failed", proc_address);
-
+#endif
     using namespace typesetting;
     // Typesetting
     // ├─Fonts
@@ -159,14 +175,18 @@ int main()
         check_failed(status, "Resources init failed"); // 4 fonts and 256 max chars?
     }
     on_scope_exit([&] { library.destroy(); });
-    utlz::print_versions(library);
 
+#if RENDER_ENABLED
+    utlz::print_versions(library);
     TextRenderer rdr;
     {
         bool status = rdr.init(4, 256);
         check_failed(status, "Renderer init failed"); // 4 fonts and 256 max chars?
     }
     on_scope_exit([&] { rdr.destroy(); });
+#else
+    auto content_scale = 1;
+#endif
 
     const std::string font_dir = FONTS_DIR;
 
@@ -271,26 +291,58 @@ int main()
     auto all_test_strs = {
         test::lorem::arabian,    test::lorem::hebrew,   test::lorem::armenian, test::lorem::chinese,
         test::lorem::japanese,   test::lorem::greek,    test::lorem::indian,   test::lorem::korean,
-        test::lorem::russian,    test::lorem::thai,     test::adhoc::emojis, /*  test::adhoc::mixed_cstr,
-                                                                              */
+        test::lorem::russian,    test::lorem::thai,     test::adhoc::emojis,   test::adhoc::mixed_cstr,
+
         test::adhoc::maths_cstr, test::adhoc::all_part1 /*, test::adhoc::all_part2,
         test::adhoc::all_part3,*/
     };
     std::vector<std::vector<RunItem>> all_runs;
+
+#if RENDER_ENABLED
     for (auto& test_str : all_test_strs)
     {
         std::string s(test_str);
-        all_runs.emplace_back(create_shaper_runs(s, fonts));
+        all_runs.emplace_back(timed("create shaper runs", create_shaper_runs, s, fonts));
     }
+#else
+    timed(
+        "all_runs",
+        [&]
+        {
+            std::vector<std::vector<RunItem>> result;
+            std::vector<std::future<std::vector<RunItem>>> futures;
+
+            for (auto& test_str : all_test_strs)
+            {
+                futures.push_back(std::async(
+                    std::launch::async,
+                    [&test_str, &fonts]
+                    {
+                        std::string s(test_str);
+                        return create_shaper_runs(s, fonts);
+                    }
+                ));
+                //                all_runs.emplace_back(create_shaper_runs(s, fonts));
+            }
+
+            // Wait for all tasks to complete
+            for (auto& future : futures)
+            {
+                result.emplace_back(future.get());
+            }
+            return 0;
+        }
+    );
+#endif
     std::string s(test::adhoc::zalgo);
-    auto zalgo_run = create_shaper_runs(s, fonts);
+
+    auto zalgo_run = timed("zalgo", create_shaper_runs, s, fonts);
 
     std::vector<std::vector<RunItem>> input_runs;
     //    for (auto& input_str : state.input)
     //        input_runs.emplace_back(create_shaper_runs(input_str, fonts));
 
     Point p { 0, 0 };
-
     draw = [&](GLFWwindow* window)
     {
         int fb_w = 0, fb_h = 0;
@@ -366,6 +418,5 @@ int main()
     }
 
     rdr.print_stats();
-
     return 0;
 }
