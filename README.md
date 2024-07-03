@@ -17,6 +17,7 @@ Note that the submodules and fonts use their own licenses. Most fonts are OFL or
 
 - freetype2
 - harfbuzz
+- sheenbidi
 - utfcpp
 - opengl
 - glfw
