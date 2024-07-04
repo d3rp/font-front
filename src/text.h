@@ -274,18 +274,22 @@ struct FontRun
     hb_buffer_t* buffer;
 };
 
-// 1.
-// collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
-// emojis)
-//std::vector<FontRun> create_font_runs(std::string& utf8txt, Font::Map& fonts)
-//{}
-std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
+/**
+ * 1.collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
+ * emojis). "Run" refers to a continuous piece of text with similar properties.
+ *
+ * In Bidi algorithm parlance we first detect "paragraphs", then lines and finally directions (by "levels")
+ *
+ * On top of that, directional runs might encompass distinct script types and finally those script
+ * runs might require multiple fonts to include all available codepoints (into glyphs)
+ *
+ * In other words: Paragraphs > Lines > Direction > Script > Font
+ */
+std::vector<FontRun> create_font_runs(std::string& utf8txt, Font::Map& fonts)
 {
+    constexpr int mask_length = 1024;
+    auto u32_str              = utlz::utf8to32(utf8txt.substr(0, mask_length));
 
-
-    auto u32_str = utlz::utf8to32(utf8txt);
-
-    // Paragraphs > Lines > Direction > Script > Font
     SBCodepointSequence sb_str { SBStringEncodingUTF32, (void*) u32_str.c_str(), u32_str.length() };
     SBAlgorithmRef bidi           = SBAlgorithmCreate(&sb_str);
     constexpr uint32_t max_levels = UINT32_MAX;
@@ -300,8 +304,6 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
     // TODO: create a iterator by chunks of 256 or sth
     // Note this relates to 8-bit characters, but we're dealing with unicode, so there's an
     // upper bound of 4x8-bits for each unicode character/codepoint i.e. 1024 >= 256 codepoints
-    constexpr int mask_length = 1024;
-    assert(u32_str.length() < mask_length);
     std::bitset<mask_length> resolved;
     const auto max_length = std::min((size_t) mask_length, u32_str.length());
 
@@ -322,17 +324,11 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
     std::vector<FontRun> font_runs;
     font_runs.reserve(max_length / 2); // by2 is an estimate
 
-    // 2. shape from font runs into run items
-    std::vector<RunItem> run_infos;
-    run_infos.reserve(font_runs.size());
-    
     auto buffer = hb_buffer_create();
     unsigned int run_start, run_end;
     int dir_run_idx = 0;
     while (dir_run_idx < max_length && SBScriptLocatorMoveNext(script_loc))
     {
-        font_runs.clear();
-
         // sync direction and script boundaries
         while (dir_run_idx < max_length && script_info->offset > direction_runs[dir_run_idx].offset)
             ++dir_run_idx;
@@ -428,46 +424,12 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
 
             goto collect_runs;
         }
-
-        std::sort(
-            font_runs.begin(),
-            font_runs.end(),
-            [](auto& lhs, auto& rhs) { return lhs.offset < rhs.offset; }
-        );
-
-
-
-        for (auto& run : font_runs)
-        {
-            {
-                STOPWATCH("shape");
-                hb_shape(run.font_ptr->unicode, run.buffer, nullptr, 0);
-            }
-
-            const auto glyphs_n = hb_buffer_get_length(run.buffer);
-
-            {
-                STOPWATCH("copy info");
-                std::vector<hb_glyph_info_t> infos;
-                infos.reserve(glyphs_n);
-                const auto infos_ptr = hb_buffer_get_glyph_infos(run.buffer, nullptr);
-                for (int i = 0; i < glyphs_n; ++i)
-                    infos.emplace_back(infos_ptr[i]);
-
-                std::vector<hb_glyph_position_t> positions;
-                positions.reserve(glyphs_n);
-                const auto pos_ptr = hb_buffer_get_glyph_positions(run.buffer, nullptr);
-                for (int i = 0; i < glyphs_n; ++i)
-                    positions.emplace_back(pos_ptr[i]);
-
-                assert(infos.size() == positions.size());
-
-                run_infos.emplace_back(RunItem { std::move(infos), std::move(positions), run.font_ptr });
-            }
-
-            hb_buffer_destroy(run.buffer);
-        }
     }
+    std::sort(
+        font_runs.begin(),
+        font_runs.end(),
+        [](auto& lhs, auto& rhs) { return lhs.offset < rhs.offset; }
+    );
 
     hb_buffer_destroy(buffer);
 
@@ -475,6 +437,46 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
     SBLineRelease(line);
     SBParagraphRelease(paragraph);
     SBAlgorithmRelease(bidi);
+
+    return font_runs;
+}
+
+std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
+{
+    auto font_runs = create_font_runs(utf8txt, fonts);
+    // 2. shape from font runs into run items
+    std::vector<RunItem> run_infos;
+    run_infos.reserve(font_runs.size());
+    for (auto& run : font_runs)
+    {
+        {
+            STOPWATCH("shape");
+            hb_shape(run.font_ptr->unicode, run.buffer, nullptr, 0);
+        }
+
+        const auto glyphs_n = hb_buffer_get_length(run.buffer);
+
+        {
+            STOPWATCH("copy info");
+            std::vector<hb_glyph_info_t> infos;
+            infos.reserve(glyphs_n);
+            const auto infos_ptr = hb_buffer_get_glyph_infos(run.buffer, nullptr);
+            for (int i = 0; i < glyphs_n; ++i)
+                infos.emplace_back(infos_ptr[i]);
+
+            std::vector<hb_glyph_position_t> positions;
+            positions.reserve(glyphs_n);
+            const auto pos_ptr = hb_buffer_get_glyph_positions(run.buffer, nullptr);
+            for (int i = 0; i < glyphs_n; ++i)
+                positions.emplace_back(pos_ptr[i]);
+
+            assert(infos.size() == positions.size());
+
+            run_infos.emplace_back(RunItem { std::move(infos), std::move(positions), run.font_ptr });
+        }
+
+        hb_buffer_destroy(run.buffer);
+    }
 
     return run_infos;
 }

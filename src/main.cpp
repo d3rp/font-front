@@ -194,6 +194,9 @@ int main()
     auto font_latin = add_font_bin(fonts_NotoSans_Regular_ttf, fonts_NotoSans_Regular_ttf_len);
     on_scope_exit([&] { destroy_font(font_latin); });
 
+    auto font_mini = add_font_bin(fonts_NotoSans_Regular_ttf, fonts_NotoSans_Regular_ttf_len, 16);
+    on_scope_exit([&] { destroy_font(font_mini); });
+
     auto font_emoji = add_font_bin(fonts_NotoEmoji_VariableFont_wght_ttf, fonts_NotoEmoji_VariableFont_wght_ttf_len);
     on_scope_exit([&] { destroy_font(font_emoji); });
 
@@ -202,10 +205,13 @@ int main()
 
 #if __APPLE__
     auto font_fallback = add_font("/Library/Fonts/Arial Unicode.ttf");
+    auto font_fallback_mini = add_font("/Library/Fonts/Arial Unicode.ttf", 16);
 #else
     auto font_fallback = add_font("C:\\Windows\\Fonts\\segoeui.ttf");
+    auto font_fallback_mini = add_font("C:\\Windows\\Fonts\\segoeui.ttf", 16);
 #endif
     on_scope_exit([&] { destroy_font(font_fallback); });
+    on_scope_exit([&] { destroy_font(font_fallback_mini); });
 
 #if 0
     auto font_latin = add_font(font_dir + "/NotoSans-Regular.ttf");
@@ -247,8 +253,14 @@ int main()
     on_scope_exit([&] { destroy_font(font_unifont); });
 #endif
 
-    Font::Map fonts;
     using V = std::vector<Font*>;
+    Font::Map mini_fonts;
+    mini_fonts.add(HB_SCRIPT_LATIN, V { &font_mini });
+    mini_fonts.set_fallback(V { &font_fallback_mini });
+
+    Font::Map fonts;
+    fonts.add(HB_SCRIPT_LATIN, V { &font_latin });
+    fonts.set_fallback(V { &font_emoji, &font_maths, &font_fallback });
 
 #if 0 // local testing with different variations
     // Works worse than arial somehow..
@@ -275,14 +287,14 @@ int main()
 
     using P            = std::pair<const char*, const char*>;
     auto all_test_strs = {
-        P { "latin", test::lorem::latin }/*,     P { "arabian", test::lorem::arabian },
+        P { "latin", test::lorem::latin },     P { "arabian", test::lorem::arabian },
         P { "hebrew", test::lorem::hebrew },   P { "armen", test::lorem::armenian },
         P { "chinese", test::lorem::chinese }, P { "jp", test::lorem::japanese },
         P { "greek", test::lorem::greek },     P { "indian", test::lorem::indian },
         P { "korean", test::lorem::korean },   P { "rus", test::lorem::russian },
         P { "thai", test::lorem::thai },       P { "emoji", test::adhoc::emojis },
         P { "mix", test::adhoc::mixed_cstr },  P { "maths", test::adhoc::maths_cstr },
-        P { "all1", test::adhoc::all_part1 }*/ /*, test::adhoc::all_part2,
+        P { "all1", test::adhoc::all_part1 } /*, test::adhoc::all_part2,
 test::adhoc::all_part3,*/
     };
     std::vector<std::vector<RunItem>> all_runs;
@@ -323,8 +335,8 @@ test::adhoc::all_part3,*/
         }
     );
 #endif
-//    std::string s(test::adhoc::zalgo);
-//    auto zalgo_run = utlz::time_in_mcrs("zalgo", create_shaper_runs, s, fonts);
+    std::string s(test::adhoc::zalgo);
+    auto zalgo_run = utlz::time_in_mcrs("zalgo", create_shaper_runs, s, mini_fonts);
 
     std::vector<std::vector<RunItem>> input_runs;
 
@@ -358,18 +370,15 @@ test::adhoc::all_part3,*/
             {
                 int ix, iy;
                 glfwGetWindowSize(window, &ix, &iy);
-                zalgox = ix - 200;
-                zalgoy = iy - 100;
+                zalgox = ix - 100;
+                zalgoy = iy - 50;
             }
-#if 0
             rdr.draw_runs<VertexDataFormat>(
                 zalgo_run,
                 { DP_X(zalgox * content_scale), DP_Y(zalgoy * content_scale) },
                 colours::blue
             );
-#endif
         }
-#if 0
         if (state.key_input)
         {
             if (state.has_input_changed)
@@ -390,7 +399,6 @@ test::adhoc::all_part3,*/
                 y += 40.0f;
             }
         }
-#endif
         rdr.end();
     };
 
