@@ -108,6 +108,14 @@ bool are_all_chars_supported(FT_Face& ftFace, std::string& u8_buffer)
     return true;
 }
 
+void print_tag(hb_script_t script)
+{
+    char buf[5];
+    hb_tag_to_string(script, buf);
+    buf[4] = 0;
+    std::cout << buf;
+}
+
 // Function to format an integer with space as thousands separator
 std::string format_with_space(long long number)
 {

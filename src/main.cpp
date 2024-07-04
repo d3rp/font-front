@@ -81,12 +81,6 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
                 state.has_input_changed = true;
             }
         }
-
-        //        if (key == GLFW_KEY_C && (mods & GLFW_MOD_SUPER)) {
-        //            const char* text_to_paste = "Pasting text into clipboard!";
-        //            glfwSetClipboardString(window, text_to_paste);
-        //            std::cout << "Pasting text: " << text_to_paste << std::endl;
-        //        }
     }
 }
 
@@ -262,6 +256,12 @@ int main()
 
     Font::Map fonts;
     fonts.add(HB_SCRIPT_LATIN, V { &font_latin });
+
+#if __APPLE__
+    auto font_chinese = add_font("/System/Library/Fonts/STHeiti Light.ttc");
+    on_scope_exit([&] { destroy_font(font_chinese); });
+    fonts.add(HB_SCRIPT_HAN, V { &font_chinese });
+#endif
     fonts.set_fallback(V { &font_emoji, &font_maths, &font_fallback });
 
 #if 0 // local testing with different variations

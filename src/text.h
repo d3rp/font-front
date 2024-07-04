@@ -25,6 +25,23 @@ extern "C"
  */
 namespace typesetting
 {
+namespace
+{
+
+#if defined(_WIN32)
+constexpr int logic_dpi_x = 96;
+constexpr int logic_dpi_y = 96;
+#elif defined(__APPLE__)
+constexpr int logic_dpi_x = 72;
+constexpr int logic_dpi_y = 72;
+#endif
+
+unsigned int gen_id()
+{
+    static unsigned int id = 0;
+    return id++;
+}
+} // namespace
 
 struct Font
 {
@@ -32,9 +49,16 @@ struct Font
     using Face        = FT_Face;
     using UnicodeType = hb_font_t*;
 
+    // Maps script types to fonts
     struct Map
     {
         const hb_script_t _fallback_key = HB_SCRIPT_INVALID;
+
+        struct Mapping
+        {
+            int start  = 0;
+            int length = 0;
+        };
 
         void add(hb_script_t script, std::vector<Font*> fonts)
         {
@@ -57,20 +81,9 @@ struct Font
 
         void set_fallback(std::vector<Font*> fonts) { add(_fallback_key, std::move(fonts)); }
 
-        void print_tag(hb_script_t script) const
-        {
-            char buf[5];
-            hb_tag_to_string(script, buf);
-            buf[4] = 0;
-            std::cout << buf;
-        }
-
         // returns the font in the array at key+idx and how many are left in the array
         std::tuple<int, Font*> at(const hb_script_t key, int idx) const
         {
-            //            std::cout << "[tag: \"";
-            //            print_tag(key);
-            //            std::cout << "\" -> \"";
             assert(idx >= 0);
             auto it = _map.find(key);
             if (it == _map.end())
@@ -86,17 +99,8 @@ struct Font
             auto font_idx = m.start + idx;
             assert(font_idx < db.size());
 
-            //            print_tag(key);
-            //            std::cout << "\"]\n";
-
             return { m.length - idx - 1, db.at(font_idx) };
         }
-
-        struct Mapping
-        {
-            int start  = 0;
-            int length = 0;
-        };
 
         std::vector<Font*> db;
         std::unordered_map<hb_script_t, Mapping> _map;
@@ -108,12 +112,6 @@ struct Font
     float font_size;
     float content_scale;
 };
-
-static unsigned int gen_id()
-{
-    static unsigned int id = 0;
-    return id++;
-}
 
 std::optional<Font> create_font_bin(
     Library* resources,
@@ -136,16 +134,6 @@ std::optional<Font> create_font_bin(
             font.face = nullptr;
         }
     );
-
-#if defined(_WIN32)
-    const int logic_dpi_x = 96;
-    const int logic_dpi_y = 96;
-#elif defined(__APPLE__)
-    const int logic_dpi_x = 72;
-    const int logic_dpi_y = 72;
-#else
-    #error "not implemented"
-#endif
 
     FT_Set_Char_Size(
         font.face,
@@ -184,16 +172,6 @@ create_font(Library* resources, const char* font_file, const int font_size, cons
             font.face = nullptr;
         }
     );
-
-#if defined(_WIN32)
-    const int logic_dpi_x = 96;
-    const int logic_dpi_y = 96;
-#elif defined(__APPLE__)
-    const int logic_dpi_x = 72;
-    const int logic_dpi_y = 72;
-#else
-    #error "not implemented"
-#endif
 
     FT_Set_Char_Size(
         font.face,
@@ -373,7 +351,6 @@ std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
         const auto script_end   = script_start + script_info->length;
 
         int font_idx = 0;
-        //        auto [fonts_remaining, font_ptr] = fonts.at(font_key, font_idx++);
         bool script_segment_resolved = false;
         bool fallback_tried          = false;
 
@@ -460,10 +437,12 @@ std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
     return font_runs;
 }
 
+/**
+ * See step 1. create_font_runs..
+ * 2. shape from font runs into run items
+ */
 ShaperRun create_shapers(std::vector<FontRun>& font_runs)
 {
-    int total_glyphs_n = 0;
-    // 2. shape from font runs into run items
     ShaperRun shaper_run;
     shaper_run.items.reserve(font_runs.size());
     for (auto& run : font_runs)
