@@ -26,7 +26,7 @@ static struct State
 
     std::atomic<float> x_offset = 10, y_offset = 30;
 
-    std::vector<std::string> input = { "> " };
+    std::vector<std::u32string> input;
 } state;
 
 void toggle(std::atomic_bool& b) { b.exchange(!b); }
@@ -35,8 +35,10 @@ void char_callback(GLFWwindow* window, unsigned int codepoint)
 {
     std::u32string u32;
     u32.push_back(codepoint);
-    auto utf8_str = utf8::utf32to8(u32);
-    state.input.at(0) += utf8_str;
+    if (state.input.empty())
+        state.input.push_back(u32);
+    else
+        state.input.at(0) += u32;
     state.has_input_changed = true;
 }
 
@@ -74,8 +76,8 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
             // Handle paste operation (Ctrl+V)
             if (key == GLFW_KEY_V)
             {
-                const char* clipboard_text = glfwGetClipboardString(window);
-                state.input.emplace_back(clipboard_text);
+                std::string clipboard_text = glfwGetClipboardString(window);
+                state.input.emplace_back(typesetting::convert_for_font_runs(clipboard_text));
                 state.has_input_changed = true;
             }
         }
@@ -298,12 +300,23 @@ int main()
 test::adhoc::all_part3,*/
     };
     std::vector<ShaperRun> all_runs;
+    auto run_pipeline_u32 = [](auto& u32, auto& fonts)
+    {
+        auto fruns = create_font_runs(u32, fonts);
+        return create_shapers(fruns);
+    };
+    auto run_pipeline = [&run_pipeline_u32](auto& s, auto& fonts)
+    {
+        auto u32 = convert_for_font_runs(s);
+        return run_pipeline_u32(u32, fonts);
+    };
+
 
 #if RENDER_ENABLED
     for (auto& test_str : all_test_strs)
     {
         std::string s(test_str.second);
-        all_runs.emplace_back(utlz::time_in_mcrs(test_str.first, create_shapers, s, fonts));
+        all_runs.emplace_back(utlz::time_in_mcrs(test_str.first, run_pipeline, s, fonts));
     }
 #else
     time_in_mcrs(
@@ -336,7 +349,7 @@ test::adhoc::all_part3,*/
     );
 #endif
     std::string s(test::adhoc::zalgo);
-    auto zalgo_run = utlz::time_in_mcrs("zalgo", create_shapers, s, mini_fonts);
+    auto zalgo_run = utlz::time_in_mcrs("zalgo", run_pipeline, s, mini_fonts);
 
     std::vector<ShaperRun> input_runs;
 
@@ -399,7 +412,7 @@ test::adhoc::all_part3,*/
                     std::stringstream counter;
                     counter << label << "[" << std::setw(4) << std::to_string(input_str.size()) << "]";
                     input_runs.emplace_back(
-                        utlz::time_in_mcrs(counter.str(), create_shapers, input_str, fonts)
+                        utlz::time_in_mcrs(counter.str(), run_pipeline_u32, input_str, fonts)
                     );
                     std::cout << "glyphs[" << std::to_string(input_runs.back().total_glyphs_n) << "]\n";
                 }

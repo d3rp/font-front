@@ -280,6 +280,20 @@ struct FontRun
     hb_buffer_t* buffer;
 };
 
+template <int mask_length = 1024>
+auto convert_for_font_runs(std::string& utf8txt)
+{
+    auto u32_str = utlz::utf8to32(utf8txt);
+
+    // truncate to bit mask length
+    if (u32_str.length() > mask_length)
+        u32_str = u32_str.substr(0, mask_length);
+
+    std::cout << "[" << std::setw(4) << std::to_string(u32_str.length()) << "]";
+
+    return u32_str;
+}
+
 /**
  * 1.collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
  * emojis). "Run" refers to a continuous piece of text with similar properties.
@@ -292,17 +306,9 @@ struct FontRun
  *
  * In other words: Paragraphs > Lines > Direction > Script > Font
  */
-std::vector<FontRun> create_font_runs(std::string& utf8txt, Font::Map& fonts)
+template <int mask_length = 1024>
+std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
 {
-    auto u32_str              = utlz::utf8to32(utf8txt);
-
-    // truncate to bit mask length
-    constexpr int mask_length = 1024;
-    if (u32_str.length() > mask_length)
-        u32_str = u32_str.substr(0, mask_length);
-
-    std::cout << "[" << std::setw(4) << std::to_string(u32_str.length()) << "]";
-
     SBCodepointSequence sb_str { SBStringEncodingUTF32, (void*) u32_str.c_str(), u32_str.length() };
     SBAlgorithmRef bidi           = SBAlgorithmCreate(&sb_str);
     constexpr uint32_t max_levels = UINT32_MAX;
@@ -454,10 +460,9 @@ std::vector<FontRun> create_font_runs(std::string& utf8txt, Font::Map& fonts)
     return font_runs;
 }
 
-ShaperRun create_shapers(std::string& utf8txt, Font::Map& fonts)
+ShaperRun create_shapers(std::vector<FontRun>& font_runs)
 {
     int total_glyphs_n = 0;
-    auto font_runs     = create_font_runs(utf8txt, fonts);
     // 2. shape from font runs into run items
     ShaperRun shaper_run;
     shaper_run.items.reserve(font_runs.size());
