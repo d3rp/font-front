@@ -267,6 +267,12 @@ struct RunItem
     Font* font;
 };
 
+struct ShaperRun
+{
+    int total_glyphs_n = 0;
+    std::vector<RunItem> items;
+};
+
 struct FontRun
 {
     unsigned int offset;
@@ -278,7 +284,8 @@ struct FontRun
  * 1.collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
  * emojis). "Run" refers to a continuous piece of text with similar properties.
  *
- * In Bidi algorithm parlance we first detect "paragraphs", then lines and finally directions (by "levels")
+ * In Bidi algorithm parlance we first detect "paragraphs", then lines and finally directions (by
+ * "levels")
  *
  * On top of that, directional runs might encompass distinct script types and finally those script
  * runs might require multiple fonts to include all available codepoints (into glyphs)
@@ -287,8 +294,14 @@ struct FontRun
  */
 std::vector<FontRun> create_font_runs(std::string& utf8txt, Font::Map& fonts)
 {
+    auto u32_str              = utlz::utf8to32(utf8txt);
+
+    // truncate to bit mask length
     constexpr int mask_length = 1024;
-    auto u32_str              = utlz::utf8to32(utf8txt.substr(0, mask_length));
+    if (u32_str.length() > mask_length)
+        u32_str = u32_str.substr(0, mask_length);
+
+    std::cout << "[" << std::setw(4) << std::to_string(u32_str.length()) << "]";
 
     SBCodepointSequence sb_str { SBStringEncodingUTF32, (void*) u32_str.c_str(), u32_str.length() };
     SBAlgorithmRef bidi           = SBAlgorithmCreate(&sb_str);
@@ -441,12 +454,13 @@ std::vector<FontRun> create_font_runs(std::string& utf8txt, Font::Map& fonts)
     return font_runs;
 }
 
-std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
+ShaperRun create_shapers(std::string& utf8txt, Font::Map& fonts)
 {
-    auto font_runs = create_font_runs(utf8txt, fonts);
+    int total_glyphs_n = 0;
+    auto font_runs     = create_font_runs(utf8txt, fonts);
     // 2. shape from font runs into run items
-    std::vector<RunItem> run_infos;
-    run_infos.reserve(font_runs.size());
+    ShaperRun shaper_run;
+    shaper_run.items.reserve(font_runs.size());
     for (auto& run : font_runs)
     {
         {
@@ -472,13 +486,14 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
 
             assert(infos.size() == positions.size());
 
-            run_infos.emplace_back(RunItem { std::move(infos), std::move(positions), run.font_ptr });
+            shaper_run.total_glyphs_n += glyphs_n;
+            shaper_run.items.emplace_back(RunItem { std::move(infos), std::move(positions), run.font_ptr });
         }
 
         hb_buffer_destroy(run.buffer);
     }
 
-    return run_infos;
+    return shaper_run;
 }
 
 } // namespace typesetting

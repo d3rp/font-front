@@ -399,10 +399,10 @@ struct TextRenderer : GlRenderer
     }
 
     template <typename VertexDataType>
-    void draw_runs(std::vector<RunItem>& runs, Point o, Colour colour)
+    void draw_runs(ShaperRun& shaper_run, Point o, Colour colour)
     {
         set_colour(colour);
-        for (auto& run : runs)
+        for (auto& run : shaper_run.items)
         {
             static std::vector<hb_helpers::GlyphInfo> glyph_infos;
             glyph_infos.clear();

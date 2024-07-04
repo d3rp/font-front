@@ -204,10 +204,10 @@ int main()
     on_scope_exit([&] { destroy_font(font_maths); });
 
 #if __APPLE__
-    auto font_fallback = add_font("/Library/Fonts/Arial Unicode.ttf");
+    auto font_fallback      = add_font("/Library/Fonts/Arial Unicode.ttf");
     auto font_fallback_mini = add_font("/Library/Fonts/Arial Unicode.ttf", 16);
 #else
-    auto font_fallback = add_font("C:\\Windows\\Fonts\\segoeui.ttf");
+    auto font_fallback      = add_font("C:\\Windows\\Fonts\\segoeui.ttf");
     auto font_fallback_mini = add_font("C:\\Windows\\Fonts\\segoeui.ttf", 16);
 #endif
     on_scope_exit([&] { destroy_font(font_fallback); });
@@ -297,13 +297,13 @@ int main()
         P { "all1", test::adhoc::all_part1 } /*, test::adhoc::all_part2,
 test::adhoc::all_part3,*/
     };
-    std::vector<std::vector<RunItem>> all_runs;
+    std::vector<ShaperRun> all_runs;
 
 #if RENDER_ENABLED
     for (auto& test_str : all_test_strs)
     {
         std::string s(test_str.second);
-        all_runs.emplace_back(utlz::time_in_mcrs(test_str.first, create_shaper_runs, s, fonts));
+        all_runs.emplace_back(utlz::time_in_mcrs(test_str.first, create_shapers, s, fonts));
     }
 #else
     time_in_mcrs(
@@ -336,9 +336,9 @@ test::adhoc::all_part3,*/
     );
 #endif
     std::string s(test::adhoc::zalgo);
-    auto zalgo_run = utlz::time_in_mcrs("zalgo", create_shaper_runs, s, mini_fonts);
+    auto zalgo_run = utlz::time_in_mcrs("zalgo", create_shapers, s, mini_fonts);
 
-    std::vector<std::vector<RunItem>> input_runs;
+    std::vector<ShaperRun> input_runs;
 
     Point p { 0, 0 };
     draw = [&](GLFWwindow* window)
@@ -384,8 +384,25 @@ test::adhoc::all_part3,*/
             if (state.has_input_changed)
             {
                 input_runs.clear();
+                bool first = true;
                 for (auto& input_str : state.input)
-                    input_runs.emplace_back(utlz::time_in_mcrs("key input", create_shaper_runs, input_str, fonts));
+                {
+                    std::string label;
+                    if (first)
+                    {
+                        label = "key input";
+                        first = false;
+                    }
+                    else
+                        label = "pasted";
+
+                    std::stringstream counter;
+                    counter << label << "[" << std::setw(4) << std::to_string(input_str.size()) << "]";
+                    input_runs.emplace_back(
+                        utlz::time_in_mcrs(counter.str(), create_shapers, input_str, fonts)
+                    );
+                    std::cout << "glyphs[" << std::to_string(input_runs.back().total_glyphs_n) << "]\n";
+                }
 
                 state.has_input_changed = false;
             }
