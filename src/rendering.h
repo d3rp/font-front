@@ -340,8 +340,10 @@ struct TextRenderer : GlRenderer
         throw std::runtime_error("Failed to add region for glyph");
     }
 
-    std::optional<std::reference_wrapper<Glyph>> get_glyph(const Font& font, unsigned int glyph_index)
+    // Returns the glyph from cache creating it, if it doesn't exist
+    std::optional<std::reference_wrapper<Glyph>> cached_glyph(const Font& font, unsigned int glyph_index)
     {
+        STOPWATCH("cached_glyph");
         GlyphKey key { font.id, glyph_index };
         auto iter = glyphs.find(key);
         // glyph exists in cache
@@ -362,17 +364,14 @@ struct TextRenderer : GlRenderer
         auto face = font.face;
         if (FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT))
             FT_Load_Glyph(face, 0, FT_LOAD_DEFAULT);
-        //            throw std::runtime_error("Glyph load failed at: " +
-        //            std::to_string(glyph_index));
 
         // TODO: use SDF
         if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_SDF))
             throw std::runtime_error("Glyph render failed at: " + std::to_string(glyph_index));
 
-        auto* g = face->glyph;
-        // Create placeholder
-        Glyph glyph;
         // update atlas and update its info to the glyph
+        Glyph glyph;
+        auto* g = face->glyph;
         if (g->bitmap.width > 0 && g->bitmap.rows > 0)
         {
             glyph.size    = { g->bitmap.width, g->bitmap.rows };
@@ -380,7 +379,6 @@ struct TextRenderer : GlRenderer
             glyph         = add_to_atlas(glyph, g->bitmap.buffer);
             textures_required++;
         }
-
         glyphs[key] = glyph;
 
         return { glyphs.at(key) };
@@ -422,7 +420,7 @@ struct TextRenderer : GlRenderer
 
             for (auto& info : glyph_infos)
             {
-                auto g_opt = get_glyph(*run.font, info.codepoint);
+                auto g_opt = cached_glyph(*run.font, info.codepoint);
                 Glyph g    = std::invoke(
                     [&]
                     {

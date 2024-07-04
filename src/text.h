@@ -264,25 +264,24 @@ struct RunItem
 {
     std::vector<hb_glyph_info_t> hb_info;
     std::vector<hb_glyph_position_t> positions;
-    //    unsigned int start;
-    //    unsigned int length;
     Font* font;
 };
 
+struct FontRun
+{
+    unsigned int offset;
+    Font* font_ptr;
+    hb_buffer_t* buffer;
+};
+
+// 1.
+// collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
+// emojis)
+//std::vector<FontRun> create_font_runs(std::string& utf8txt, Font::Map& fonts)
+//{}
 std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
 {
-    // 1.
-    // collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
-    // emojis)
-    struct FontRun
-    {
-        unsigned int offset;
-        Font* font_ptr;
-        hb_buffer_t* buffer;
-    };
 
-    // 2. shape from font runs into run items
-    std::vector<RunItem> run_infos;
 
     auto u32_str = utlz::utf8to32(utf8txt);
 
@@ -323,6 +322,10 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
     std::vector<FontRun> font_runs;
     font_runs.reserve(max_length / 2); // by2 is an estimate
 
+    // 2. shape from font runs into run items
+    std::vector<RunItem> run_infos;
+    run_infos.reserve(font_runs.size());
+    
     auto buffer = hb_buffer_create();
     unsigned int run_start, run_end;
     int dir_run_idx = 0;
@@ -335,14 +338,20 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
             ++dir_run_idx;
 
         hb_buffer_reset(buffer);
-        hb_buffer_add_utf32(
-            buffer,
-            (const uint32_t*) u32_str.c_str(),
-            -1,
-            script_info->offset,
-            script_info->length
-        );
-        hb_buffer_guess_segment_properties(buffer);
+        {
+            STOPWATCH("buffer add txt");
+            hb_buffer_add_utf32(
+                buffer,
+                (const uint32_t*) u32_str.c_str(),
+                -1,
+                script_info->offset,
+                script_info->length
+            );
+        }
+        {
+            STOPWATCH("guess prop");
+            hb_buffer_guess_segment_properties(buffer);
+        }
         auto font_key = hb_buffer_get_script(buffer);
 
         const auto script_start = script_info->offset;
@@ -426,29 +435,35 @@ std::vector<RunItem> create_shaper_runs(std::string& utf8txt, Font::Map& fonts)
             [](auto& lhs, auto& rhs) { return lhs.offset < rhs.offset; }
         );
 
-        run_infos.reserve(font_runs.size());
+
 
         for (auto& run : font_runs)
         {
-            hb_shape(run.font_ptr->unicode, run.buffer, nullptr, 0);
+            {
+                STOPWATCH("shape");
+                hb_shape(run.font_ptr->unicode, run.buffer, nullptr, 0);
+            }
 
             const auto glyphs_n = hb_buffer_get_length(run.buffer);
 
-            std::vector<hb_glyph_info_t> infos;
-            infos.reserve(glyphs_n);
-            const auto infos_ptr = hb_buffer_get_glyph_infos(run.buffer, nullptr);
-            for (int i = 0; i < glyphs_n; ++i)
-                infos.emplace_back(infos_ptr[i]);
+            {
+                STOPWATCH("copy info");
+                std::vector<hb_glyph_info_t> infos;
+                infos.reserve(glyphs_n);
+                const auto infos_ptr = hb_buffer_get_glyph_infos(run.buffer, nullptr);
+                for (int i = 0; i < glyphs_n; ++i)
+                    infos.emplace_back(infos_ptr[i]);
 
-            std::vector<hb_glyph_position_t> positions;
-            positions.reserve(glyphs_n);
-            const auto pos_ptr = hb_buffer_get_glyph_positions(run.buffer, nullptr);
-            for (int i = 0; i < glyphs_n; ++i)
-                positions.emplace_back(pos_ptr[i]);
+                std::vector<hb_glyph_position_t> positions;
+                positions.reserve(glyphs_n);
+                const auto pos_ptr = hb_buffer_get_glyph_positions(run.buffer, nullptr);
+                for (int i = 0; i < glyphs_n; ++i)
+                    positions.emplace_back(pos_ptr[i]);
 
-            assert(infos.size() == positions.size());
+                assert(infos.size() == positions.size());
 
-            run_infos.emplace_back(RunItem { std::move(infos), std::move(positions), run.font_ptr });
+                run_infos.emplace_back(RunItem { std::move(infos), std::move(positions), run.font_ptr });
+            }
 
             hb_buffer_destroy(run.buffer);
         }

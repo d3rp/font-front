@@ -267,19 +267,22 @@ int main()
     //    fonts.add(HB_SCRIPT_MATH, V { &font_maths });
 #endif
 
-    fonts.add(HB_SCRIPT_LATIN, V { &font_latin });
-    fonts.set_fallback(V { &font_emoji, &font_maths, &font_fallback });
+    {
+        STOPWATCH("test");
+        fonts.add(HB_SCRIPT_LATIN, V { &font_latin });
+        fonts.set_fallback(V { &font_emoji, &font_maths, &font_fallback });
+    }
 
     using P            = std::pair<const char*, const char*>;
     auto all_test_strs = {
-        P { "latin", test::lorem::latin },     P { "arabian", test::lorem::arabian },
+        P { "latin", test::lorem::latin }/*,     P { "arabian", test::lorem::arabian },
         P { "hebrew", test::lorem::hebrew },   P { "armen", test::lorem::armenian },
         P { "chinese", test::lorem::chinese }, P { "jp", test::lorem::japanese },
         P { "greek", test::lorem::greek },     P { "indian", test::lorem::indian },
         P { "korean", test::lorem::korean },   P { "rus", test::lorem::russian },
         P { "thai", test::lorem::thai },       P { "emoji", test::adhoc::emojis },
         P { "mix", test::adhoc::mixed_cstr },  P { "maths", test::adhoc::maths_cstr },
-        P { "all1", test::adhoc::all_part1 } /*, test::adhoc::all_part2,
+        P { "all1", test::adhoc::all_part1 }*/ /*, test::adhoc::all_part2,
 test::adhoc::all_part3,*/
     };
     std::vector<std::vector<RunItem>> all_runs;
@@ -320,8 +323,8 @@ test::adhoc::all_part3,*/
         }
     );
 #endif
-    std::string s(test::adhoc::zalgo);
-    auto zalgo_run = utlz::time_in_mcrs("zalgo", create_shaper_runs, s, fonts);
+//    std::string s(test::adhoc::zalgo);
+//    auto zalgo_run = utlz::time_in_mcrs("zalgo", create_shaper_runs, s, fonts);
 
     std::vector<std::vector<RunItem>> input_runs;
 
@@ -358,12 +361,15 @@ test::adhoc::all_part3,*/
                 zalgox = ix - 200;
                 zalgoy = iy - 100;
             }
+#if 0
             rdr.draw_runs<VertexDataFormat>(
                 zalgo_run,
                 { DP_X(zalgox * content_scale), DP_Y(zalgoy * content_scale) },
                 colours::blue
             );
+#endif
         }
+#if 0
         if (state.key_input)
         {
             if (state.has_input_changed)
@@ -384,6 +390,7 @@ test::adhoc::all_part3,*/
                 y += 40.0f;
             }
         }
+#endif
         rdr.end();
     };
 
