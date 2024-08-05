@@ -212,9 +212,9 @@ void destroy_font(Font& font)
 // Declarations of Text
 using namespace gfx;
 
-namespace hb_helpers
+namespace shaping_details
 {
-namespace Feature
+namespace feature
 {
 const hb_tag_t KernTag = HB_TAG('k', 'e', 'r', 'n'); // kerning operations
 const hb_tag_t LigaTag = HB_TAG('l', 'i', 'g', 'a'); // standard ligature substitution
@@ -259,9 +259,9 @@ struct FontRun
 };
 
 template <int mask_length = 1024>
-auto convert_for_font_runs(std::string& utf8txt)
+auto convert_for_font_runs(std::string& utf8_txt)
 {
-    auto u32_str = utlz::utf8to32(utf8txt);
+    auto u32_str = utlz::utf8to32(utf8_txt);
 
     // truncate to bit mask length
     if (u32_str.length() > mask_length)
@@ -293,7 +293,6 @@ std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
     SBParagraphRef paragraph = SBAlgorithmCreateParagraph(bidi, 0, max_levels, SBLevelDefaultLTR);
     SBLineRef line           = SBParagraphCreateLine(paragraph, 0, SBParagraphGetLength(paragraph));
     const SBRun* direction_runs = SBLineGetRunsPtr(line);
-    //    SBUInteger runs_n           = SBLineGetRunCount(line);
 
     SBScriptLocatorRef script_loc = SBScriptLocatorCreate();
     SBScriptLocatorLoadCodepoints(script_loc, &sb_str);

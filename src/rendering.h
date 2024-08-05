@@ -343,12 +343,12 @@ struct TextRenderer : GlRenderer
     // Returns the glyph from cache creating it, if it doesn't exist
     std::optional<std::reference_wrapper<Glyph>> cached_glyph(const Font& font, unsigned int glyph_index)
     {
-        STOPWATCH("cached_glyph");
         GlyphKey key { font.id, glyph_index };
         auto iter = glyphs.find(key);
         // glyph exists in cache
         if (iter != glyphs.end())
         {
+            STOPWATCH("cached_glyph");
             auto& glyph = iter->second;
             if (glyph.tex_index >= 0 && (glyph.dyn_tex == dyn_atlases[glyph.tex_index]))
             {
@@ -358,6 +358,7 @@ struct TextRenderer : GlRenderer
             return { glyph };
         }
 
+        STOPWATCH("add glyph");
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // Disable byte-alignment restriction
 
         // glyph needs to be created
@@ -404,13 +405,13 @@ struct TextRenderer : GlRenderer
         set_colour(colour);
         for (auto& run : shaper_run.items)
         {
-            static std::vector<hb_helpers::GlyphInfo> glyph_infos;
+            static std::vector<shaping_details::GlyphInfo> glyph_infos;
             glyph_infos.clear();
 
             for (int i = 0; i < run.hb_info.size(); ++i)
                 // Freetype: The advance vector is expressed in 1/64 of pixels, and is truncated
                 // to integer pixels on each iteration.
-                glyph_infos.emplace_back(std::forward<hb_helpers::GlyphInfo>(
+                glyph_infos.emplace_back(std::forward<shaping_details::GlyphInfo>(
                     { run.hb_info[i].codepoint,
                       run.positions[i].x_offset / 64,
                       run.positions[i].y_offset / 64,

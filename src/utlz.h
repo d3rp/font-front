@@ -183,24 +183,42 @@ struct Aggregate
     {
     }
 
-    ~Aggregate() { print_stats(); }
+    ~Aggregate() {
+        volatile static auto _ = print_header();
+        print_stats();
+    }
+
+    int print_header() const
+    {
+        // clang-format off
+        std::cout
+            << std::setw(15) << "label"
+            << std::setw(3) << " | " << std::setw(8) << "calls"
+            << std::setw(3) << " | " << std::setw(17) << "total time"
+            << std::setw(3) << " | " << std::setw(15) << "avg"
+            << "\n";
+        // clang-format on
+        return 0;
+    }
 
     void print_stats() const
     {
         auto ticks_total = sum.count();
-        auto time_unit = metric_time_unit(Measurement::Clock::period::den);
+        auto time_unit   = metric_time_unit(Measurement::Clock::period::den);
 
-        std::stringstream total_in_units;
-        total_in_units << format_with_space(sum.count()) << " " << time_unit;
+        std::stringstream total_time;
+        total_time << format_with_space(sum.count()) << " " << time_unit;
 
         std::stringstream avg_in_units;
         avg_in_units << format_with_space(float(sum.count()) / float(measurements)) << " " << time_unit;
 
         // clang-format off
+
         std::cout
             << std::setw(15) << label
-            << std::setw(6) << " - total: " << std::setw(15) << total_in_units.str()
-            << std::setw(8) << " avg: "     << std::setw(15) << avg_in_units.str()
+            << std::setw(3) << " | " << std::setw(8) << std::to_string(measurements)
+            << std::setw(3) << " | " << std::setw(17) << total_time.str()
+            << std::setw(3) << " | "     << std::setw(15) << avg_in_units.str()
             << "\n";
         // clang-format on
     }
