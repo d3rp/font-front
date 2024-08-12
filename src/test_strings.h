@@ -2,14 +2,17 @@ namespace test
 {
 namespace lorem
 {
-
 auto latin = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam aliquet sit amet "
              "lacus tincidunt pharetra. Quisque egestas, lorem suscipit ultrices molestie, quam "
-             "diam pretium ante, eget blandit enim ipsum ut nisi. Donec a porta sapien. "
-             "Suspendisse vel malesuada lacus. Nulla tempus blandit massa in commodo. Aenean magna "
-             "turpis, sodales id iaculis pharetra, lobortis nec diam. Nunc pellentesque eu enim in "
-             "fringilla. Phasellus nec turpis id erat fermentum scelerisque. Aliquam nec nisl id "
-             "dolor ullamcorper dignissim quis nec ligula. ";
+             "diam pretium ante, eget blandit enim ipsum ut nisi. Donec a porta sapien. ";
+
+//    auto latin = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aliquam aliquet sit amet "
+//             "lacus tincidunt pharetra. Quisque egestas, lorem suscipit ultrices molestie, quam "
+//             "diam pretium ante, eget blandit enim ipsum ut nisi. Donec a porta sapien. "
+//             "Suspendisse vel malesuada lacus. Nulla tempus blandit massa in commodo. Aenean magna "
+//             "turpis, sodales id iaculis pharetra, lobortis nec diam. Nunc pellentesque eu enim in "
+//             "fringilla. Phasellus nec turpis id erat fermentum scelerisque. Aliquam nec nisl id "
+//             "dolor ullamcorper dignissim quis nec ligula. ";
 auto arabian = "حيث عن العسكري تشيكوسلوفاكيا. تحت وقرى مشروط الأوروبية مع. إذ تحت أملاً "
                "المبرمة. أن فصل المعاهدات واندونيسيا، تشيكوسلوفاكيا.";
 auto korean = "국민경제의 발전을 위한 중요정책의 수립에 관하여 대통령의 자문에 응하기 "

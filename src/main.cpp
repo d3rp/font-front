@@ -13,6 +13,10 @@
 #include "fontbin/notosans_emoji.h"
 #include "fontbin/notosans_math.h"
 
+#define DEBUG_LEVEL 1
+#include <debug.hpp>
+#undef DEBUG_LEVEL
+
 // For testing and benchmarking
 #define RENDER_ENABLED 1
 
@@ -187,6 +191,7 @@ int main()
         return font;
     };
 
+#if 0
     auto font_latin = add_font_bin(fonts_NotoSans_Regular_ttf, fonts_NotoSans_Regular_ttf_len);
     on_scope_exit([&] { destroy_font(font_latin); });
 
@@ -287,6 +292,12 @@ int main()
         fonts.set_fallback(V { &font_emoji, &font_maths, &font_fallback });
     }
 
+#endif
+
+    auto font_bins = { Fonts::Chain::Bin { fonts_NotoSans_Regular_ttf, fonts_NotoSans_Regular_ttf_len } };
+    Fonts::add("cofo medium", {{Fonts::ScriptKey::ARABIC, font_bins}});
+
+
     using P            = std::pair<const char*, const char*>;
     auto all_test_strs = {
         P { "latin", test::lorem::latin },     P { "arabian", test::lorem::arabian },
@@ -313,10 +324,13 @@ test::adhoc::all_part3,*/
 
 
 #if RENDER_ENABLED
+
+    auto& font_map = Fonts::get_script_matched_font("cofo medium");
+    debug(), "Got script matched Font::Map ", font_map, " with ", font_map._map;
     for (auto& test_str : all_test_strs)
     {
         std::string s(test_str.second);
-        all_runs.emplace_back(utlz::time_in_mcrs(test_str.first, run_pipeline, s, fonts));
+        all_runs.emplace_back(utlz::stopwatch::time_in_mcrs(test_str.first, run_pipeline, s, font_map));
     }
 #else
     time_in_mcrs(
@@ -348,8 +362,11 @@ test::adhoc::all_part3,*/
         }
     );
 #endif
+
+#if 0
     std::string s(test::adhoc::zalgo);
     auto zalgo_run = utlz::time_in_mcrs("zalgo", run_pipeline, s, mini_fonts);
+#endif
 
     std::vector<ShaperRun> input_runs;
 
@@ -379,6 +396,7 @@ test::adhoc::all_part3,*/
                 );
                 y += 40.0f;
             }
+#if 0
             float zalgox, zalgoy;
             {
                 int ix, iy;
@@ -428,6 +446,7 @@ test::adhoc::all_part3,*/
                 );
                 y += 40.0f;
             }
+#endif
         }
         rdr.end();
     };

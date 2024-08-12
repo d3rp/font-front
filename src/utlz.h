@@ -11,12 +11,15 @@
 
 #define LOG_FUNC std::cout << __PRETTY_FUNCTION__ << "\n";
 
+namespace
+{
 // Hash function for GlyphKey
 template <class T>
 inline void hash_combine(std::size_t& seed, const T& v)
 {
     std::hash<T> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
 }
 
 namespace std
@@ -108,6 +111,18 @@ bool are_all_chars_supported(FT_Face& ftFace, std::string& u8_buffer)
     return true;
 }
 
+std::string to_string(hb_script_t script)
+{
+    if (script == HB_SCRIPT_INVALID)
+        return {"Invd"};
+
+    char buf[5];
+    hb_tag_to_string(script, buf);
+    buf[4] = 0;
+
+    return {buf};
+}
+
 void print_tag(hb_script_t script)
 {
     char buf[5];
@@ -116,6 +131,8 @@ void print_tag(hb_script_t script)
     std::cout << buf;
 }
 
+namespace stopwatch
+{
 // Function to format an integer with space as thousands separator
 std::string format_with_space(long long number)
 {
@@ -147,7 +164,7 @@ auto time_in_ = [](std::string label, auto func, auto&... args)
     const auto elapsed_in_units = std::chrono::duration_cast<Unit>(elapsed);
 
     std::cout << std::setw(12) << label << ": " << std::setw(8)
-              << utlz::format_with_space((elapsed_in_units).count()) << " "
+              << format_with_space((elapsed_in_units).count()) << " "
               << metric_time_unit(typename Unit::period().den) << "\n";
 
     return std::move(result);
@@ -157,8 +174,7 @@ auto time_in_ms   = time_in_<std::chrono::milliseconds>;
 auto time_in_mcrs = time_in_<std::chrono::microseconds>;
 auto time_in_ns   = time_in_<std::chrono::nanoseconds>;
 
-namespace stopwatch
-{
+// Wall clock benchmark
 struct Measurement
 {
     using Clock = std::chrono::high_resolution_clock;

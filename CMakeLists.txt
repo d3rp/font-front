@@ -86,6 +86,9 @@ list(APPEND sheenbidi_sources
 add_library(sheenbidi ${sheenbidi_sources})
 target_include_directories(sheenbidi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/sheenbidi/Headers)
 
+# debug-hpp
+target_include_directories(sheenbidi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/debughpp)
+
 target_link_libraries(${PROJECT_NAME}
         glfw
         glm::glm

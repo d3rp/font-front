@@ -3,6 +3,8 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H // Include FreeType header files
 
+#include "blueprints.h"
+
 namespace typesetting
 {
 // Memory handling and other resource mgmnt for fonts

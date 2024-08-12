@@ -12,7 +12,11 @@ extern "C"
 #include <SheenBidi.h>
 };
 
-#include "scope_guards.h"
+#define DEBUG_LEVEL 1
+#define DEBUG_SHOW_THREAD_ID 1
+#include <debug.hpp>
+#undef DEBUG_LEVEL
+
 #include "blueprints.h"
 #include "types.h"
 #include "library.h"
@@ -66,6 +70,7 @@ struct Font
             volatile static int _ = std::invoke(
                 [&]
                 {
+                    debug(), "Font::Map ", this, " reserve fallback elem";
                     // space for fallback font
                     db.emplace_back(nullptr);
                     return 0;
@@ -77,9 +82,14 @@ struct Font
                 db.emplace_back(font);
             m.length = db.size() - m.start;
             _map.emplace(script, m);
+            debug(), "Font::Map ", this, " added fonts ", fonts, " for ", utlz::to_string(script);
         }
 
-        void set_fallback(std::vector<Font*> fonts) { add(_fallback_key, std::move(fonts)); }
+        void set_fallback(std::vector<Font*> fonts)
+        {
+            debug(), "Font::Map ", this, " set fallback to ", fonts;
+            add(_fallback_key, std::move(fonts));
+        }
 
         // returns the font in the array at key+idx and how many are left in the array
         std::tuple<int, Font*> at(const hb_script_t key, int idx) const
@@ -91,10 +101,11 @@ struct Font
                 auto fb = _map.find(_fallback_key);
                 assert(fb != _map.end()); // need to set a fallback font set
                 auto fb_idx = fb->second.start + fb->second.length - 1;
-                //                printf("\" ... returning fallback]\n");
+                debug(), "Returning fallback at index: ", fb_idx;
                 return { 0, db.at(fb_idx) };
             }
             auto m = it->second;
+            debug(), "Mapping: ", m;
             assert(idx < m.length);
             auto font_idx = m.start + idx;
             assert(font_idx < db.size());
@@ -143,8 +154,8 @@ std::optional<Font> create_font_bin(
         logic_dpi_y                                   // vertical device resolution
     );
 
-    font.unicode = hb_ft_font_create_referenced(font.face);
-    hb_ft_font_set_funcs(font.unicode);
+    font.unicode = hb_ft_font_create(font.face, nullptr);
+//    hb_ft_font_set_funcs(font.unicode);
 
     face_scope_dtor.dismiss();
 
@@ -226,7 +237,7 @@ static hb_feature_t KerningOff  = { KernTag, 0, 0, std::numeric_limits<unsigned 
 static hb_feature_t KerningOn   = { KernTag, 1, 0, std::numeric_limits<unsigned int>::max() };
 static hb_feature_t CligOff     = { CligTag, 0, 0, std::numeric_limits<unsigned int>::max() };
 static hb_feature_t CligOn      = { CligTag, 1, 0, std::numeric_limits<unsigned int>::max() };
-} // namespace Feature
+} // namespace feature
 
 struct GlyphInfo
 {
@@ -236,7 +247,7 @@ struct GlyphInfo
     hb_position_t x_advance;
     hb_position_t y_advance;
 };
-} // namespace hb_helpers
+} // namespace shaping_details
 
 struct RunItem
 {
@@ -272,6 +283,159 @@ auto convert_for_font_runs(std::string& utf8_txt)
     return u32_str;
 }
 
+using FontId = std::string;
+
+template <typename KeyType, typename ValueType, template <typename, typename, typename...> class MapType>
+bool contains_key(const MapType<KeyType, ValueType>& haystack, const KeyType& needle)
+{
+    return haystack.find(needle) != haystack.end();
+};
+
+template <typename KeyType, typename ValueType, template <typename, typename, typename...> class MapType>
+bool contains_value(const MapType<KeyType, ValueType>& haystack, const KeyType& needle)
+{
+    return std::any_of(
+        haystack.begin(),
+        haystack.end(),
+        [&needle](const auto& pair) { return pair.second == needle; }
+    );
+};
+
+#define errorif(x, y) assert(!x)
+
+struct Fonts : blueprints::Singleton<Fonts>
+{
+
+    enum class ScriptKey : int
+    {
+        LATIN,
+        ARABIC
+    };
+
+    static auto adapt(const ScriptKey key)
+    {
+        switch (key)
+        {
+            case ScriptKey::LATIN:
+                return HB_SCRIPT_LATIN;
+            case ScriptKey::ARABIC:
+                return HB_SCRIPT_ARABIC;
+            default:
+                return HB_SCRIPT_INVALID;
+        }
+    };
+
+    // Fonts::Chain latin-chain = {script-key: [{normal-font-bin, its-size}, {emoji-font-bin,
+    // its-size}, ...]} Fonts::Chain arabic-chain = {...} Fonts::add("matched", [latin-chain,
+    // arabic-chain])
+    struct Chain
+    {
+        const ScriptKey& key;
+
+        using Bin  = std::pair<const unsigned char*, size_t>;
+        using Bins = std::vector<Bin>;
+        Bins font_binaries;
+    };
+
+    Fonts()
+    {
+        font_renderer.init();
+        set_fallback();
+    }
+
+    ~Fonts() { font_renderer.destroy(); }
+
+    void set_fallback(std::string font_path = {})
+    {
+        // TODO: impl for windows
+        if (font_path.empty())
+        {
+            font_path = "/System/Library/fonts/Supplemental/Arial Unicode.ttf";
+            debug(), "empty fallback, setting: ", font_path;
+        }
+
+        using namespace typesetting;
+        errorif(!std::filesystem::exists(font_path), "Error: Font file not found");
+        auto opt = create_font(&font_renderer, font_path.c_str(), 16, 1);
+        debug(), "optional: ", opt;
+        errorif(!opt.has_value(), "Font creation failed");
+        script_matched_fonts.fallback_font_data = opt.value();
+    }
+
+    //    static typesetting::Font& get_font(const FontId& id)
+    //    {
+    //        auto& fonts = Fonts::get_instance();
+    //        errorif(!contains_key(fonts.system_fonts, id), "Font not found in system_fonts");
+    //        return fonts.system_fonts.at(id);
+    //    }
+
+    static typesetting::Font::Map& get_script_matched_font(const FontId& id)
+    {
+        auto& fonts = Fonts::get_instance();
+        errorif(!contains_key(fonts.script_matched_fonts.font_mapping, id), "Font not found");
+        return fonts.script_matched_fonts.font_mapping.at(id);
+    }
+
+    static void add(const FontId& id, std::vector<Chain> font_chains)
+    {
+        using namespace typesetting;
+        auto& fonts = Fonts::get_instance();
+        std::vector<typesetting::Font*> font_ptrs;
+        for (auto& chain : font_chains)
+        {
+            // Create a font from binaries, save to fonts and...
+            for (auto& [font_bin, bin_size] : chain.font_binaries)
+            {
+                auto _ = create_font_bin(&fonts.font_renderer, font_bin, bin_size, 0, 0.0f);
+                // TODO: Handle this in release in the case that the system font is somehow
+                // corrupted
+                errorif(!_, "Font loading failed");
+
+                auto& font_data = fonts.script_matched_fonts.font_data;
+                font_data.emplace_back(_.value());
+                font_ptrs.emplace_back(&font_data.back());
+            }
+
+            // Convert the convenience script key to Harfbuzz equivalent
+            auto script_key = Fonts::adapt(chain.key);
+
+            // ... populate pointers into a lookup table
+            Font::Map font_map;
+            debug(), "Adding ", id, " with ", font_chains;
+            for (auto& chain : font_chains)
+            {
+                debug(), "script", utlz::to_string(script_key), "font ptrs", font_ptrs;
+                font_map.add(script_key, font_ptrs);
+            }
+
+            auto& fonts = Fonts::get_instance();
+            font_map.set_fallback({ &fonts.script_matched_fonts.fallback_font_data });
+            fonts.script_matched_fonts.font_mapping.emplace(id, std::move(font_map));
+        }
+    }
+
+    //    static void add(const FontId& id, const unsigned char* font_bin, size_t bin_size)
+    //    {
+    //        using namespace typesetting;
+    //        auto& fonts = Fonts::get_instance();
+    //        auto _      = create_font_bin(&Library::get_instance(), font_bin, bin_size, 0, 0.0f);
+    //        // TODO: Handle this in release in the case that the system font is somehow corrupted
+    //        errorif(!_, "Font loading failed");
+    //        fonts.system_fonts.emplace(id, _.value());
+    //    }
+
+    typesetting::Library font_renderer;
+
+    //    std::unordered_map<FontId, typesetting::Font> system_fonts;
+
+    struct
+    {
+        typesetting::Font fallback_font_data;
+        std::vector<typesetting::Font> font_data;
+        std::unordered_map<FontId, typesetting::Font::Map> font_mapping;
+    } script_matched_fonts;
+};
+
 /**
  * 1.collect individual utf32 codepoints into "font runs" with a matching font (e.g. latin vs.
  * emojis). "Run" refers to a continuous piece of text with similar properties.
@@ -287,6 +451,7 @@ auto convert_for_font_runs(std::string& utf8_txt)
 template <int mask_length = 1024>
 std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
 {
+    STOPWATCH("create font runs");
     SBCodepointSequence sb_str { SBStringEncodingUTF32, (void*) u32_str.c_str(), u32_str.length() };
     SBAlgorithmRef bidi           = SBAlgorithmCreate(&sb_str);
     constexpr uint32_t max_levels = UINT32_MAX;
@@ -331,7 +496,7 @@ std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
 
         hb_buffer_reset(buffer);
         {
-            STOPWATCH("buffer add txt");
+            //            STOPWATCH("buffer add txt");
             hb_buffer_add_utf32(
                 buffer,
                 (const uint32_t*) u32_str.c_str(),
@@ -341,7 +506,7 @@ std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
             );
         }
         {
-            STOPWATCH("guess prop");
+            //            STOPWATCH("guess prop");
             hb_buffer_guess_segment_properties(buffer);
         }
         auto font_key = hb_buffer_get_script(buffer);
@@ -349,13 +514,14 @@ std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
         const auto script_start = script_info->offset;
         const auto script_end   = script_start + script_info->length;
 
-        int font_idx = 0;
+        int font_idx                 = 0;
         bool script_segment_resolved = false;
         bool fallback_tried          = false;
 
         int fonts_remaining;
         Font* font_ptr;
-    collect_runs:
+
+        debug(), utf8::utf32to8(u32_str.substr(script_start, script_end)), "collect runs, font [key, index]: [", utlz::to_string(font_key), ",", font_idx, "]";
         do
         {
             auto [remaining, fp] = fonts.at(font_key, font_idx++);
@@ -407,18 +573,6 @@ std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
                 script_segment_resolved &= resolved[i];
 
         } while (fonts_remaining > 0 && !script_segment_resolved);
-
-        if (!script_segment_resolved && !fallback_tried)
-        {
-            font_key             = fonts._fallback_key;
-            font_idx             = 0;
-            fallback_tried       = true;
-            auto [remaining, fp] = fonts.at(font_key, font_idx++);
-            fonts_remaining      = remaining;
-            font_ptr             = fp;
-
-            goto collect_runs;
-        }
     }
     std::sort(
         font_runs.begin(),
@@ -442,12 +596,13 @@ std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
  */
 ShaperRun create_shapers(std::vector<FontRun>& font_runs)
 {
+    STOPWATCH("create shapers");
     ShaperRun shaper_run;
     shaper_run.items.reserve(font_runs.size());
     for (auto& run : font_runs)
     {
         {
-            STOPWATCH("shape");
+            //            STOPWATCH("shape");
             hb_shape(run.font_ptr->unicode, run.buffer, nullptr, 0);
         }
 

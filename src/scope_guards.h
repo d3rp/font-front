@@ -32,7 +32,7 @@ public:
 
     OnScopeExit(OnScopeExit&& other)
         : cleanup(std::move(other.cleanup))
-        , is_active(other.exchange(false))
+        , is_active(other.is_active.exchange(false))
     {
     }
 
