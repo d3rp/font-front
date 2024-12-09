@@ -1,14 +1,16 @@
 # Render unicode characters
 
-Disclaimer: This is a prototype for a complex text layout engine. It is not production ready - see [[#considerations]] at the end to evaluate further steps to create such work based on this.
+Disclaimer: This is a prototype for a complex text layout engine. It is not production ready - see [considerations](#considerations) at the end to evaluate further steps to create such work based on this.
 
 A complex text layout engine handles multiple writing systems, directions and fonts to render all unicode characters appropriately as part of a UI framework. This demo intends to render unicode characters with a relatively simple setup with a touch of opinionated structure and a playground to explore the dependencies involved.
+
+![Demo picture of text layout](demo.png)
 
 Cross-platform (Windows, MacOS)
 
 Splits strings into script and font specific runs applying them appropriately.
 
-Most of the rendering pipeline and some of the shaping logic imitated from: 
+Based most of the rendering pipeline and some of the shaping logic on:
 https://github.com/zhuyie/drawtext-gl-freetype-harfbuzz.git
 
 # License
@@ -25,6 +27,7 @@ Note that the submodules and fonts use their own licenses. Most fonts are OFL or
 - glfw
 - glad
 - glm
+- ghc/filesystem (mac)
 
 # Running from scratch
 
