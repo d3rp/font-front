@@ -13,3 +13,6 @@
 [submodule "deps/sheenbidi"]
 	path = deps/sheenbidi
 	url = https://github.com/Tehreer/SheenBidi.git
+[submodule "deps/ghc_filesystem"]
+	path = deps/ghc_filesystem
+	url = https://github.com/gulrak/filesystem.git

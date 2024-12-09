@@ -20,6 +20,8 @@ if (MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
 endif ()
 
+set(deps_dir ${CMAKE_CURRENT_SOURCE_DIR}/deps)
+
 # Verify that opengl is installed
 find_package(OpenGL REQUIRED)
 
@@ -29,17 +31,17 @@ set(CMAKE_DISABLE_FIND_PACKAGE_BZip2 TRUE CACHE BOOL " " FORCE)
 set(CMAKE_DISABLE_FIND_PACKAGE_PNG TRUE CACHE BOOL " " FORCE)
 set(CMAKE_DISABLE_FIND_PACKAGE_HarfBuzz TRUE CACHE BOOL " " FORCE)
 set(CMAKE_DISABLE_FIND_PACKAGE_BrotliDec TRUE CACHE BOOL " " FORCE)
-add_subdirectory(deps/freetype)
+add_subdirectory(${deps_dir}/freetype)
 #find_package(Freetype REQUIRED)
 #add_library(freetype ALIAS Freetype::Freetype)
 
 # utfcpp
 target_compile_definitions(${PROJECT_NAME} PUBLIC UTF_CPP_CPLUSPLUS=201703L)
-target_include_directories(${PROJECT_NAME} PUBLIC "deps/utfcpp")
+target_include_directories(${PROJECT_NAME} PUBLIC ${deps_dir}/utfcpp)
 
 # Harfbuzz
 set(HB_BUILD_SUBSET OFF CACHE BOOL " " FORCE)
-add_subdirectory(deps/harfbuzz)
+add_subdirectory(${deps_dir}/harfbuzz)
 
 # GLFW 3
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL " " FORCE)
@@ -53,15 +55,15 @@ add_subdirectory(deps/glfw)
 add_library(glad deps/glad/src/glad.c)
 target_link_libraries(glad PRIVATE ${OPENGL_LIBRARIES})
 #target_compile_definitions(glad PRIVATE GLAD_GL_IMPLEMENTATION=1)
-target_include_directories(glad PUBLIC "deps/glad/include" ${OPENGL_INCLUDE_DIRS})
+target_include_directories(glad PUBLIC ${deps_dir}/glad/include ${OPENGL_INCLUDE_DIRS})
 
 # GLM
 #find_package(glm REQUIRED)
-add_subdirectory(deps/glm)
-include_directories(deps/glm)
+add_subdirectory(${deps_dir}/glm)
+include_directories(${deps_dir}/glm)
 
 # sheenbidi
-set(SBidi_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/sheenbidi/Source")
+set(SBidi_SOURCE_DIR "${deps_dir}/sheenbidi/Source")
 list(APPEND sheenbidi_sources
         "${SBidi_SOURCE_DIR}/BidiChain.c"
         "${SBidi_SOURCE_DIR}/BidiTypeLookup.c"
@@ -84,10 +86,12 @@ list(APPEND sheenbidi_sources
         "${SBidi_SOURCE_DIR}/StatusStack.c"
 )
 add_library(sheenbidi ${sheenbidi_sources})
-target_include_directories(sheenbidi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/sheenbidi/Headers)
+target_include_directories(sheenbidi PUBLIC ${deps_dir}/sheenbidi/Headers)
 
 # debug-hpp
-target_include_directories(sheenbidi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/debughpp)
+target_include_directories(sheenbidi PUBLIC ${deps_dir}/debughpp)
+
+target_include_directories(${PROJECT_NAME} INTERFACE ${deps_dir}/ghc_filesystem)
 
 target_link_libraries(${PROJECT_NAME}
         glfw

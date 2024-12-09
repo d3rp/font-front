@@ -9,38 +9,24 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+
+#if __APPLE__
+    #include <Availability.h> // for deployment target to support pre-catalina targets without std::fs
+    #include "../deps/ghc_filesystem/include/ghc/filesystem.hpp"
+#else
+    #include <Windows.h> // MultiByteToWideChar
+    #include <filesystem>
+#endif
+
 #define LOG_FUNC std::cout << __PRETTY_FUNCTION__ << "\n";
-
-namespace
-{
-// Hash function for GlyphKey
-template <class T>
-inline void hash_combine(std::size_t& seed, const T& v)
-{
-    std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
-}
-
-// namespace std
-// {
-// template <>
-// struct hash<pair<unsigned int, unsigned int>>
-// {
-//     size_t operator()(const pair<unsigned int, unsigned int>& p) const
-//     {
-//         size_t seed = 0;
-//         ::hash_combine(seed, p.first);
-//         ::hash_combine(seed, p.second);
-//         return seed;
-//     }
-// };
-// } // namespace std
 
 namespace utlz
 {
-
-using namespace utf8;
+#if __APPLE__
+namespace fs = ghc::filesystem;
+#else
+namespace fs = std::filesystem;
+#endif
 
 float to_float(FT_F26Dot6 weird_number) { return float(weird_number) * 1.0f / 64.0f; }
 
@@ -98,7 +84,7 @@ inline bool is_char_supported(FT_Face& face, char32_t character)
 // Function to check if all characters in a UTF-8 buffer are supported by the font
 bool are_all_chars_supported(FT_Face& ftFace, std::string& u8_buffer)
 {
-    std::u32string u32_buffer = utf8to32(u8_buffer);
+    std::u32string u32_buffer = utf8::utf8to32(u8_buffer);
 
     for (char32_t character : u32_buffer)
     {
@@ -130,6 +116,7 @@ void print_tag(hb_script_t script)
     buf[4] = 0;
     std::cout << buf;
 }
+
 
 namespace stopwatch
 {

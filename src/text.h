@@ -155,7 +155,7 @@ std::optional<Font> create_font_bin(
     );
 
     font.unicode = hb_ft_font_create(font.face, nullptr);
-//    hb_ft_font_set_funcs(font.unicode);
+    //    hb_ft_font_set_funcs(font.unicode);
 
     face_scope_dtor.dismiss();
 
@@ -223,7 +223,7 @@ void destroy_font(Font& font)
 // Declarations of Text
 using namespace gfx;
 
-namespace shaping_details
+namespace detail
 {
 namespace feature
 {
@@ -247,7 +247,7 @@ struct GlyphInfo
     hb_position_t x_advance;
     hb_position_t y_advance;
 };
-} // namespace shaping_details
+} // namespace detail
 
 struct RunItem
 {
@@ -272,7 +272,7 @@ struct FontRun
 template <int mask_length = 1024>
 auto convert_for_font_runs(std::string& utf8_txt)
 {
-    auto u32_str = utlz::utf8to32(utf8_txt);
+    auto u32_str = utf8::utf8to32(utf8_txt);
 
     // truncate to bit mask length
     if (u32_str.length() > mask_length)
@@ -305,7 +305,6 @@ bool contains_value(const MapType<KeyType, ValueType>& haystack, const KeyType& 
 
 struct Fonts : blueprints::Singleton<Fonts>
 {
-
     enum class ScriptKey : int
     {
         LATIN,
@@ -325,9 +324,11 @@ struct Fonts : blueprints::Singleton<Fonts>
         }
     };
 
-    // Fonts::Chain latin-chain = {script-key: [{normal-font-bin, its-size}, {emoji-font-bin,
-    // its-size}, ...]} Fonts::Chain arabic-chain = {...} Fonts::add("matched", [latin-chain,
-    // arabic-chain])
+    // clang-format off
+    // Fonts::Chain latin-chain = {script-key: [{normal-font-bin, its-size}, {emoji-font-bin, its-size}, ...]}
+    // Fonts::Chain arabic-chain = {...}
+    // Fonts::add("matched", [latin-chain, arabic-chain])
+    // clang-format on
     struct Chain
     {
         const ScriptKey& key;
@@ -350,6 +351,21 @@ struct Fonts : blueprints::Singleton<Fonts>
         // TODO: impl for windows
         if (font_path.empty())
         {
+#if __APPLE__
+            std::vector<std::string> path_candidates {
+                "/System/Library/fonts/Supplemental/Arial Unicode.ttf", // After Mojave
+                "/System/Library/Fonts/Arial Unicode.ttf",              // By people of internets
+                "/Library/Fonts/Arial Unicode.ttf"                      // Mojave
+            };
+            font_path = *std::find_if(
+                path_candidates.begin(),
+                path_candidates.end(),
+                [](const std::string& x) { return utlz::fs::exists(x.c_str()); }
+            );
+
+#else
+            font_path = "C:\\Windows\\Fonts\\segoeui.ttf";
+#endif
             font_path = "/System/Library/fonts/Supplemental/Arial Unicode.ttf";
             debug(), "empty fallback, setting: ", font_path;
         }
@@ -521,7 +537,8 @@ std::vector<FontRun> create_font_runs(std::u32string& u32_str, Font::Map& fonts)
         int fonts_remaining;
         Font* font_ptr;
 
-        debug(), utf8::utf32to8(u32_str.substr(script_start, script_end)), "collect runs, font [key, index]: [", utlz::to_string(font_key), ",", font_idx, "]";
+        debug(), utf8::utf32to8(u32_str.substr(script_start, script_end)),
+            "collect runs, font [key, index]: [", utlz::to_string(font_key), ",", font_idx, "]";
         do
         {
             auto [remaining, fp] = fonts.at(font_key, font_idx++);
