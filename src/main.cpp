@@ -2,91 +2,26 @@
 #include <functional>
 #include <filesystem>
 
-#include "scope_guards.h"
-#include "text.h"
-#include "rendering.h"
-#include "test_strings.h"
-#include <future>
-#include <GLFW/glfw3.h>
-
-#include "fontbin/notosans_regular.h"
-#include "fontbin/notosans_emoji.h"
-#include "fontbin/notosans_math.h"
+// For testing and benchmarking
+#define RENDER_ENABLED 1
+#if !RENDER_ENABLED
+    #include <future>
+#endif
 
 #define DEBUG_LEVEL 1
 #include <debug.hpp>
 #undef DEBUG_LEVEL
 
-// For testing and benchmarking
-#define RENDER_ENABLED 1
+#include "scope_guards.h"
+#include "text.h"
+#include "rendering.h"
+#include "test_strings.h"
 
-std::function<void(GLFWwindow*)> draw;
+#include "fontbin/notosans_regular.h"
+#include "fontbin/notosans_emoji.h"
+#include "fontbin/notosans_math.h"
 
-static struct State
-{
-    std::atomic<bool> lorem_ipsums      = true;
-    std::atomic<bool> key_input         = true;
-    std::atomic<bool> has_input_changed = true;
-
-    std::atomic<float> x_offset = 10, y_offset = 30;
-
-    std::vector<std::u32string> input;
-} state;
-
-void toggle(std::atomic_bool& b) { b.exchange(!b); }
-
-void char_callback(GLFWwindow* window, unsigned int codepoint)
-{
-    std::u32string u32;
-    u32.push_back(codepoint);
-    if (state.input.empty())
-        state.input.push_back(u32);
-    else
-        state.input.at(0) += u32;
-    state.has_input_changed = true;
-}
-
-void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
-{
-    constexpr double delta_scale = 10.0;
-    state.x_offset               = state.x_offset + delta_scale * yoffset;
-    //    state.y_offset               = state.y_offset + delta_scale * yoffset;
-}
-
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
-{
-    if (action == GLFW_PRESS)
-    {
-        if (mods & GLFW_MOD_SUPER || mods & GLFW_MOD_CONTROL)
-        {
-            // quit
-            if (key == GLFW_KEY_Q)
-            {
-                glfwSetWindowShouldClose(window, GLFW_TRUE);
-            }
-
-            // lorem ipsum
-            if (key == GLFW_KEY_L)
-            {
-                toggle(state.lorem_ipsums);
-            }
-
-            // lorem ipsum
-            if (key == GLFW_KEY_I)
-            {
-                toggle(state.key_input);
-            }
-
-            // Handle paste operation (Ctrl+V)
-            if (key == GLFW_KEY_V)
-            {
-                std::string clipboard_text = glfwGetClipboardString(window);
-                state.input.emplace_back(typesetting::convert_for_font_runs(clipboard_text));
-                state.has_input_changed = true;
-            }
-        }
-    }
-}
+#include "glfw_helpers.h"
 
 int main()
 {
@@ -140,6 +75,7 @@ int main()
     auto proc_address = (GLADloadproc) glfwGetProcAddress;
     may_fail(gladLoadGLLoader, "setting loader for glad failed", proc_address);
 #endif
+
     using namespace typesetting;
 
     Library library;
@@ -191,32 +127,23 @@ int main()
         return font;
     };
 
-#if 0
     auto font_latin = add_font_bin(fonts_NotoSans_Regular_ttf, fonts_NotoSans_Regular_ttf_len);
     on_scope_exit([&] { destroy_font(font_latin); });
 
     auto font_mini = add_font_bin(fonts_NotoSans_Regular_ttf, fonts_NotoSans_Regular_ttf_len, 16);
     on_scope_exit([&] { destroy_font(font_mini); });
 
-    auto font_emoji = add_font_bin(fonts_NotoEmoji_VariableFont_wght_ttf, fonts_NotoEmoji_VariableFont_wght_ttf_len);
-    on_scope_exit([&] { destroy_font(font_emoji); });
-
-    auto font_maths = add_font_bin(fonts_NotoSansMath_Regular_ttf, fonts_NotoSansMath_Regular_ttf_len);
-    on_scope_exit([&] { destroy_font(font_maths); });
-
 #if __APPLE__
-    auto font_fallback      = add_font("/Library/Fonts/Arial Unicode.ttf");
+
+    auto font_fallback = add_font("/Library/Fonts/Arial Unicode.ttf");
+    on_scope_exit([&] { destroy_font(font_fallback); });
     auto font_fallback_mini = add_font("/Library/Fonts/Arial Unicode.ttf", 16);
+    on_scope_exit([&] { destroy_font(font_fallback_mini); });
 #else
     auto font_fallback      = add_font("C:\\Windows\\Fonts\\segoeui.ttf");
     auto font_fallback_mini = add_font("C:\\Windows\\Fonts\\segoeui.ttf", 16);
 #endif
-    on_scope_exit([&] { destroy_font(font_fallback); });
-    on_scope_exit([&] { destroy_font(font_fallback_mini); });
 
-#if 0
-    auto font_latin = add_font(font_dir + "/NotoSans-Regular.ttf");
-    on_scope_exit([&] { destroy_font(font_latin); });
     // arabic
     auto font_amiri = add_font(font_dir + "/amiri-regular.ttf");
     on_scope_exit([&] { destroy_font(font_amiri); });
@@ -246,13 +173,12 @@ int main()
     auto font_korean = add_font(font_dir + "/NotoSansKR-VariableFont_wght.ttf");
     on_scope_exit([&] { destroy_font(font_korean); });
     // other
-    auto font_maths = add_font(font_dir + "/NotoSansMath-Regular.ttf");
-    on_scope_exit([&] { destroy_font(font_maths); });
-    auto font_emoji = add_font(font_dir + "/NotoEmoji-VariableFont_wght.ttf");
-    on_scope_exit([&] { destroy_font(font_emoji); });
     auto font_unifont = add_font(font_dir + "/unifont.ttf");
     on_scope_exit([&] { destroy_font(font_unifont); });
-#endif
+    auto font_emoji = add_font_bin(fonts_NotoEmoji_VariableFont_wght_ttf, fonts_NotoEmoji_VariableFont_wght_ttf_len);
+    on_scope_exit([&] { destroy_font(font_emoji); });
+    auto font_maths = add_font_bin(fonts_NotoSansMath_Regular_ttf, fonts_NotoSansMath_Regular_ttf_len);
+    on_scope_exit([&] { destroy_font(font_maths); });
 
     using V = std::vector<Font*>;
     Font::Map mini_fonts;
@@ -292,11 +218,8 @@ int main()
         fonts.set_fallback(V { &font_emoji, &font_maths, &font_fallback });
     }
 
-#endif
-
     auto font_bins = { Fonts::Chain::Bin { fonts_NotoSans_Regular_ttf, fonts_NotoSans_Regular_ttf_len } };
-    Fonts::add("cofo medium", {{Fonts::ScriptKey::ARABIC, font_bins}});
-
+    Fonts::add("cofo medium", { { Fonts::ScriptKey::ARABIC, font_bins } });
 
     using P            = std::pair<const char*, const char*>;
     auto all_test_strs = {
@@ -307,8 +230,8 @@ int main()
         P { "korean", test::lorem::korean },   P { "rus", test::lorem::russian },
         P { "thai", test::lorem::thai },       P { "emoji", test::adhoc::emojis },
         P { "mix", test::adhoc::mixed_cstr },  P { "maths", test::adhoc::maths_cstr },
-        P { "all1", test::adhoc::all_part1 } /*, test::adhoc::all_part2,
-test::adhoc::all_part3,*/
+        P { "all1", test::adhoc::all_part1 } /*, P { "all2", test::adhoc::all_part2 },
+        P { "all3", test::adhoc::all_part3 } ,*/
     };
     std::vector<ShaperRun> all_runs;
     auto run_pipeline_u32 = [](auto& u32, auto& fonts)
@@ -321,7 +244,6 @@ test::adhoc::all_part3,*/
         auto u32 = convert_for_font_runs(s);
         return run_pipeline_u32(u32, fonts);
     };
-
 
 #if RENDER_ENABLED
 
@@ -342,14 +264,16 @@ test::adhoc::all_part3,*/
 
             for (auto& test_str : all_test_strs)
             {
-                futures.push_back(std::async(
-                    std::launch::async,
-                    [&test_str, &fonts]
-                    {
-                        std::string s(test_str);
-                        return create_shaper_runs(s, fonts);
-                    }
-                ));
+                futures.push_back(
+                    std::async(
+                        std::launch::async,
+                        [&test_str, &fonts]
+                        {
+                            std::string s(test_str);
+                            return create_shaper_runs(s, fonts);
+                        }
+                    )
+                );
                 //                all_runs.emplace_back(create_shaper_runs(s, fonts));
             }
 
@@ -363,10 +287,8 @@ test::adhoc::all_part3,*/
     );
 #endif
 
-#if 0
     std::string s(test::adhoc::zalgo);
-    auto zalgo_run = utlz::time_in_mcrs("zalgo", run_pipeline, s, mini_fonts);
-#endif
+    auto zalgo_run = utlz::stopwatch::time_in_mcrs("zalgo", run_pipeline, s, mini_fonts);
 
     std::vector<ShaperRun> input_runs;
 
@@ -396,7 +318,6 @@ test::adhoc::all_part3,*/
                 );
                 y += 40.0f;
             }
-#if 0
             float zalgox, zalgoy;
             {
                 int ix, iy;
@@ -430,7 +351,7 @@ test::adhoc::all_part3,*/
                     std::stringstream counter;
                     counter << label << "[" << std::setw(4) << std::to_string(input_str.size()) << "]";
                     input_runs.emplace_back(
-                        utlz::time_in_mcrs(counter.str(), run_pipeline_u32, input_str, fonts)
+                        utlz::stopwatch::time_in_mcrs(counter.str(), run_pipeline_u32, input_str, fonts)
                     );
                     std::cout << "glyphs[" << std::to_string(input_runs.back().total_glyphs_n) << "]\n";
                 }
@@ -446,7 +367,6 @@ test::adhoc::all_part3,*/
                 );
                 y += 40.0f;
             }
-#endif
         }
         rdr.end();
     };
