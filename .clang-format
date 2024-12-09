@@ -1,10 +1,6 @@
 ---
 # Generated with ```clang-format -style=Mozilla -dump-config > .clang-format
 # Updated 22.12.2021 - Joni
-#
-# To run it over the codebase:
-# gfind modules/juce_cloudy -path modules/juce_cloudy/icst -prune -o -regextype posix-extended -regex '.*\.(h|cpp)$' -exec clang-format -i {} \;
-#
 Language:        Cpp
 BasedOnStyle:  Mozilla
 AccessModifierOffset: -4
