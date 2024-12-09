@@ -56,7 +56,7 @@ struct VertexDataFormat
     base_t data[spec::vertex_data::triangle_points_n][spec::vertex_data::pos_points_n];
 };
 
-using GlyphKey = std::pair<unsigned int, unsigned int>;
+using GlyphKey = std::pair<unsigned int, FT_UInt>;
 
 struct Glyph
 {
@@ -67,7 +67,25 @@ struct Glyph
     unsigned int dyn_tex = 0;       // Texture atlas generation
 };
 
-using GlyphCache = std::unordered_map<GlyphKey, Glyph>;
+struct GlyphKeyHash
+{
+    size_t operator()(const GlyphKey& key) const
+    {
+        size_t hash1 = std::hash<unsigned int>()(key.first);
+        size_t hash2 = std::hash<FT_UInt>()(key.second);
+        return hash1 ^ (hash2 << 1);
+    }
+};
+
+struct GlyphKeyEqual
+{
+    bool operator()(const GlyphKey& lhs, const GlyphKey& rhs) const
+    {
+        return lhs.first == rhs.first && lhs.second == rhs.second;
+    }
+};
+
+using GlyphCache = std::unordered_map<GlyphKey, Glyph, GlyphKeyHash, GlyphKeyEqual>;
 
 struct Atlas
 {

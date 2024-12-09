@@ -4,7 +4,6 @@
 #include <mutex>
 
 ////////////////////////////////////////////////////////////////////////////////
-// CRTP - curiously recurring template pattern
 // A helper namespace for common virtual and singleton type patterns implemented
 // as templated structures or other compile type metaprogramming instead of relying
 // on "slow" runtime virtual pointers.
@@ -13,6 +12,7 @@
 namespace blueprints
 {
 
+// CRTP - curiously recurring template pattern
 template <template <typename> class Base, typename Derived>
 struct CRTPBase
 {

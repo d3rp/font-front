@@ -22,20 +22,20 @@ inline void hash_combine(std::size_t& seed, const T& v)
 }
 }
 
-namespace std
-{
-template <>
-struct hash<pair<unsigned int, unsigned int>>
-{
-    size_t operator()(const pair<unsigned int, unsigned int>& p) const
-    {
-        size_t seed = 0;
-        ::hash_combine(seed, p.first);
-        ::hash_combine(seed, p.second);
-        return seed;
-    }
-};
-} // namespace std
+// namespace std
+// {
+// template <>
+// struct hash<pair<unsigned int, unsigned int>>
+// {
+//     size_t operator()(const pair<unsigned int, unsigned int>& p) const
+//     {
+//         size_t seed = 0;
+//         ::hash_combine(seed, p.first);
+//         ::hash_combine(seed, p.second);
+//         return seed;
+//     }
+// };
+// } // namespace std
 
 namespace utlz
 {
